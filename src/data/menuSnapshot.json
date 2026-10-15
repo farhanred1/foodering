@@ -1,0 +1,759 @@
+{
+  "updatedAt": "2026-10-15T05:10:00Z",
+  "shops": [
+    {
+      "id": "chinese",
+      "name": "Chinese Stall",
+      "cuisine": "Chinese & Oriental Cuisine",
+      "color": "rose",
+      "icon": "Soup"
+    },
+    {
+      "id": "malay",
+      "name": "Malay Stall",
+      "cuisine": "Malay & Halal Cuisine",
+      "color": "emerald",
+      "icon": "UtensilsCrossed"
+    },
+    {
+      "id": "international",
+      "name": "International Stall",
+      "cuisine": "Western & Asian Fusion",
+      "color": "indigo",
+      "icon": "Utensils"
+    },
+    {
+      "id": "drinks",
+      "name": "Drinks & Snacks",
+      "cuisine": "Beverages, Bakery & Fruits",
+      "color": "sky",
+      "icon": "Coffee"
+    }
+  ],
+  "dailySchedules": [
+    {
+      "date": "2026-10-16",
+      "label": "Friday, Oct 16, 2026",
+      "items": [
+        {
+          "id": 27015,
+          "name": "Chinese Stall - Vegetarian Set",
+          "displayName": "Vegetarian Set",
+          "price": 3.5,
+          "price_formatted": "$3.50",
+          "description": "Fresh vegetarian stall daily selection.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/03/Vegetarian.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-16"
+        },
+        {
+          "id": 24202,
+          "name": "Malay Stall - Nasi Padang Set",
+          "displayName": "Nasi Padang Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/Nasi-padang.png",
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-16"
+        },
+        {
+          "id": 793774,
+          "name": "INTERNATIONAL STALL-Chia Seed Fish And Chip",
+          "displayName": "Chia Seed Fish And Chip",
+          "price": 5.5,
+          "price_formatted": "$5.50",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "international",
+          "shopName": "International Stall",
+          "shopCuisine": "Western & Asian Fusion",
+          "date": "2026-10-16"
+        },
+        {
+          "id": 24201,
+          "name": "Chinese Stall - Economic Rice Set",
+          "displayName": "Economic Rice Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/wang-caifan-26-jalan-membina-1.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-16"
+        },
+        {
+          "id": 1260549,
+          "name": "CHINESE STALL- Chicken Cutlet Curry Mee",
+          "displayName": "Chicken Cutlet Curry Mee",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-16"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-17",
+      "label": "Saturday, Oct 17, 2026",
+      "items": [
+        {
+          "id": 24202,
+          "name": "Malay Stall - Nasi Padang Set",
+          "displayName": "Nasi Padang Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/Nasi-padang.png",
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-17"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-19",
+      "label": "Monday, Oct 19, 2026",
+      "items": [
+        {
+          "id": 27015,
+          "name": "Chinese Stall - Vegetarian Set",
+          "displayName": "Vegetarian Set",
+          "price": 3.5,
+          "price_formatted": "$3.50",
+          "description": "Fresh vegetarian stall daily selection.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/03/Vegetarian.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-19"
+        },
+        {
+          "id": 24202,
+          "name": "Malay Stall - Nasi Padang Set",
+          "displayName": "Nasi Padang Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/Nasi-padang.png",
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-19"
+        },
+        {
+          "id": 24201,
+          "name": "Chinese Stall - Economic Rice Set",
+          "displayName": "Economic Rice Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/wang-caifan-26-jalan-membina-1.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-19"
+        },
+        {
+          "id": 1260551,
+          "name": "CHINESE STALL- Shrimp w Pork Noodle",
+          "displayName": "Shrimp w Pork Noodle",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-19"
+        },
+        {
+          "id": 1260552,
+          "name": "INTERNATIONAL STALL - Indonesia Chicken Fried Rice Set",
+          "displayName": "Indonesia Chicken Fried Rice Set",
+          "price": 5.0,
+          "price_formatted": "$5.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "international",
+          "shopName": "International Stall",
+          "shopCuisine": "Western & Asian Fusion",
+          "date": "2026-10-19"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-20",
+      "label": "Tuesday, Oct 20, 2026",
+      "items": [
+        {
+          "id": 27015,
+          "name": "Chinese Stall - Vegetarian Set",
+          "displayName": "Vegetarian Set",
+          "price": 3.5,
+          "price_formatted": "$3.50",
+          "description": "Fresh vegetarian stall daily selection.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/03/Vegetarian.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-20"
+        },
+        {
+          "id": 772360,
+          "name": "MALAY STALL-Chicken Briyani",
+          "displayName": "Chicken Briyani",
+          "price": 5.0,
+          "price_formatted": "$5.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-20"
+        },
+        {
+          "id": 794621,
+          "name": "INTERNATIONAL STALL-Seafood Pasta Aglio Olio",
+          "displayName": "Seafood Pasta Aglio Olio",
+          "price": 5.0,
+          "price_formatted": "$5.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "international",
+          "shopName": "International Stall",
+          "shopCuisine": "Western & Asian Fusion",
+          "date": "2026-10-20"
+        },
+        {
+          "id": 24201,
+          "name": "Chinese Stall - Economic Rice Set",
+          "displayName": "Economic Rice Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/wang-caifan-26-jalan-membina-1.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-20"
+        },
+        {
+          "id": 752045,
+          "name": "CHINESE STALL - Double Boiled Lotus w Pork",
+          "displayName": "Double Boiled Lotus w Pork",
+          "price": 5.5,
+          "price_formatted": "$5.50",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-21",
+      "label": "Wednesday, Oct 21, 2026",
+      "items": [
+        {
+          "id": 27015,
+          "name": "Chinese Stall - Vegetarian Set",
+          "displayName": "Vegetarian Set",
+          "price": 3.5,
+          "price_formatted": "$3.50",
+          "description": "Fresh vegetarian stall daily selection.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/03/Vegetarian.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-21"
+        },
+        {
+          "id": 24202,
+          "name": "Malay Stall - Nasi Padang Set",
+          "displayName": "Nasi Padang Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/Nasi-padang.png",
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-21"
+        },
+        {
+          "id": 341441,
+          "name": "INTERNATIONAL STALL -NASI MANDI CHICKEN",
+          "displayName": "NASI MANDI CHICKEN",
+          "price": 5.0,
+          "price_formatted": "$5.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "international",
+          "shopName": "International Stall",
+          "shopCuisine": "Western & Asian Fusion",
+          "date": "2026-10-21"
+        },
+        {
+          "id": 24201,
+          "name": "Chinese Stall - Economic Rice Set",
+          "displayName": "Economic Rice Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/wang-caifan-26-jalan-membina-1.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-21"
+        },
+        {
+          "id": 914438,
+          "name": "CHINESE STALL-Chicken Lor Mee",
+          "displayName": "Chicken Lor Mee",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-21"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-22",
+      "label": "Thursday, Oct 22, 2026",
+      "items": [
+        {
+          "id": 27015,
+          "name": "Chinese Stall - Vegetarian Set",
+          "displayName": "Vegetarian Set",
+          "price": 3.5,
+          "price_formatted": "$3.50",
+          "description": "Fresh vegetarian stall daily selection.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/03/Vegetarian.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-22"
+        },
+        {
+          "id": 712917,
+          "name": "CHINESE STALL-Nonya Chicken Curry W Rice",
+          "displayName": "Nonya Chicken Curry W Rice",
+          "price": 5.0,
+          "price_formatted": "$5.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-22"
+        },
+        {
+          "id": 1120944,
+          "name": "MALAY STALL - Nasi Goreng Seafood",
+          "displayName": "Nasi Goreng Seafood",
+          "price": 4.5,
+          "price_formatted": "$4.50",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-22"
+        },
+        {
+          "id": 929272,
+          "name": "INTERNATIONAL STALL-Bibimbap Beef w Rice",
+          "displayName": "Bibimbap Beef w Rice",
+          "price": 5.5,
+          "price_formatted": "$5.50",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "international",
+          "shopName": "International Stall",
+          "shopCuisine": "Western & Asian Fusion",
+          "date": "2026-10-22"
+        },
+        {
+          "id": 24201,
+          "name": "Chinese Stall - Economic Rice Set",
+          "displayName": "Economic Rice Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/wang-caifan-26-jalan-membina-1.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-22"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-23",
+      "label": "Friday, Oct 23, 2026",
+      "items": [
+        {
+          "id": 27015,
+          "name": "Chinese Stall - Vegetarian Set",
+          "displayName": "Vegetarian Set",
+          "price": 3.5,
+          "price_formatted": "$3.50",
+          "description": "Fresh vegetarian stall daily selection.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/03/Vegetarian.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-23"
+        },
+        {
+          "id": 24202,
+          "name": "Malay Stall - Nasi Padang Set",
+          "displayName": "Nasi Padang Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/Nasi-padang.png",
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-23"
+        },
+        {
+          "id": 1138313,
+          "name": "INTERNATIONAL - Ayam Goreng W Nasi Jeruk",
+          "displayName": "Ayam Goreng W Nasi Jeruk",
+          "price": 5.0,
+          "price_formatted": "$5.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-23"
+        },
+        {
+          "id": 24201,
+          "name": "Chinese Stall - Economic Rice Set",
+          "displayName": "Economic Rice Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/wang-caifan-26-jalan-membina-1.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-23"
+        },
+        {
+          "id": 1260550,
+          "name": "CHINESE STALL- Zha Jiang Mian",
+          "displayName": "Zha Jiang Mian",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-23"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-24",
+      "label": "Saturday, Oct 24, 2026",
+      "items": [
+        {
+          "id": 24202,
+          "name": "Malay Stall - Nasi Padang Set",
+          "displayName": "Nasi Padang Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/Nasi-padang.png",
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-24"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-26",
+      "label": "Monday, Oct 26, 2026",
+      "items": [
+        {
+          "id": 27015,
+          "name": "Chinese Stall - Vegetarian Set",
+          "displayName": "Vegetarian Set",
+          "price": 3.5,
+          "price_formatted": "$3.50",
+          "description": "Fresh vegetarian stall daily selection.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/03/Vegetarian.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-26"
+        },
+        {
+          "id": 24202,
+          "name": "Malay Stall - Nasi Padang Set",
+          "displayName": "Nasi Padang Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/Nasi-padang.png",
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-26"
+        },
+        {
+          "id": 1260558,
+          "name": "INTERNATIONAL STALL- Nasi Kerabu w Baked Chicken",
+          "displayName": "Nasi Kerabu w Baked Chicken",
+          "price": 5.5,
+          "price_formatted": "$5.50",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "international",
+          "shopName": "International Stall",
+          "shopCuisine": "Western & Asian Fusion",
+          "date": "2026-10-26"
+        },
+        {
+          "id": 24201,
+          "name": "Chinese Stall - Economic Rice Set",
+          "displayName": "Economic Rice Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/wang-caifan-26-jalan-membina-1.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-26"
+        },
+        {
+          "id": 1260553,
+          "name": "CHINESE STALL- Tomato Egg Noodle",
+          "displayName": "Tomato Egg Noodle",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-26"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-27",
+      "label": "Tuesday, Oct 27, 2026",
+      "items": [
+        {
+          "id": 27015,
+          "name": "Chinese Stall - Vegetarian Set",
+          "displayName": "Vegetarian Set",
+          "price": 3.5,
+          "price_formatted": "$3.50",
+          "description": "Fresh vegetarian stall daily selection.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/03/Vegetarian.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-27"
+        },
+        {
+          "id": 1260557,
+          "name": "MALAY STALL- Nasi Jagung w Fish Curry",
+          "displayName": "Nasi Jagung w Fish Curry",
+          "price": 5.0,
+          "price_formatted": "$5.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-27"
+        },
+        {
+          "id": 24201,
+          "name": "Chinese Stall - Economic Rice Set",
+          "displayName": "Economic Rice Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/wang-caifan-26-jalan-membina-1.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-27"
+        },
+        {
+          "id": 794615,
+          "name": "CHINESE STALL-Double Boiled Watercress Chicken Soup",
+          "displayName": "Double Boiled Watercress Chicken Soup",
+          "price": 5.0,
+          "price_formatted": "$5.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-27"
+        },
+        {
+          "id": 733196,
+          "name": "INTERNATIONAL STALL-Chicken Shawarma Set",
+          "displayName": "Chicken Shawarma Set",
+          "price": 5.5,
+          "price_formatted": "$5.50",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "international",
+          "shopName": "International Stall",
+          "shopCuisine": "Western & Asian Fusion",
+          "date": "2026-10-27"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-28",
+      "label": "Wednesday, Oct 28, 2026",
+      "items": [
+        {
+          "id": 27015,
+          "name": "Chinese Stall - Vegetarian Set",
+          "displayName": "Vegetarian Set",
+          "price": 3.5,
+          "price_formatted": "$3.50",
+          "description": "Fresh vegetarian stall daily selection.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/03/Vegetarian.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-28"
+        },
+        {
+          "id": 24202,
+          "name": "Malay Stall - Nasi Padang Set",
+          "displayName": "Nasi Padang Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/Nasi-padang.png",
+          "shopId": "malay",
+          "shopName": "Malay Stall",
+          "shopCuisine": "Malay & Halal Cuisine",
+          "date": "2026-10-28"
+        },
+        {
+          "id": 752028,
+          "name": "INTERNATIONAL STALL - Thai Khao Mok Chicken Rice",
+          "displayName": "Thai Khao Mok Chicken Rice",
+          "price": 5.0,
+          "price_formatted": "$5.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "international",
+          "shopName": "International Stall",
+          "shopCuisine": "Western & Asian Fusion",
+          "date": "2026-10-28"
+        },
+        {
+          "id": 24201,
+          "name": "Chinese Stall - Economic Rice Set",
+          "displayName": "Economic Rice Set",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "A set is inclusive of 1 meat, 2 vegetables, and steamed rice.",
+          "is_in_stock": true,
+          "image": "https://ssip-cafeteria.whew.life/wp-content/uploads/2022/02/wang-caifan-26-jalan-membina-1.jpg",
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-28"
+        },
+        {
+          "id": 1260554,
+          "name": "CHINESE STALL- Wanton Soup Noodle",
+          "displayName": "Wanton Soup Noodle",
+          "price": 4.0,
+          "price_formatted": "$4.00",
+          "description": "",
+          "is_in_stock": true,
+          "image": null,
+          "shopId": "chinese",
+          "shopName": "Chinese Stall",
+          "shopCuisine": "Chinese & Oriental Cuisine",
+          "date": "2026-10-28"
+        }
+      ]
+    }
+  ]
+}
