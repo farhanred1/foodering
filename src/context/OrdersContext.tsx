@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserOrder, WalletTransaction } from '../types/cafeteria';
 import { CafeteriaAPI } from '../services/api';
+import { useAuth } from './AuthContext';
 
 interface OrdersContextType {
   orders: UserOrder[];
@@ -19,6 +20,7 @@ interface OrdersContextType {
 const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
 
 export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [orders, setOrders] = useState<UserOrder[]>(() => CafeteriaAPI.getAuthenticUserOrders());
   const [walletBalance, setWalletBalance] = useState<number>(() => CafeteriaAPI.getWalletBalance());
   const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>(() => CafeteriaAPI.getWalletTransactions());
@@ -26,13 +28,28 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'orders' | 'wallet'>('orders');
 
+  // Synchronize with active user login/logout
   useEffect(() => {
+    if (user) {
+      setOrders(CafeteriaAPI.getAuthenticUserOrders());
+      setWalletBalance(CafeteriaAPI.getWalletBalance());
+      setWalletTransactions(CafeteriaAPI.getWalletTransactions());
+    } else {
+      setOrders([]);
+      setWalletBalance(0);
+      setWalletTransactions([]);
+      setIsOrdersOpen(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
     try {
-      localStorage.setItem('ssip_user_orders', JSON.stringify(orders));
+      localStorage.setItem(`ssip_user_orders_${user.username}`, JSON.stringify(orders));
     } catch (e) {
       console.error('Failed to save order history', e);
     }
-  }, [orders]);
+  }, [orders, user]);
 
   const addOrder = (newOrder: UserOrder) => {
     setOrders(prev => [newOrder, ...prev]);

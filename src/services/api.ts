@@ -274,7 +274,6 @@ export const CafeteriaAPI = {
    * User login against WooCommerce portal
    */
   async login(username: string, password: string): Promise<UserSession> {
-    sessionStorage.removeItem('ssip_logged_out');
     try {
       const initialRes = await fetch(`${API_BASE}/`);
       const html = await initialRes.text();
@@ -288,13 +287,27 @@ export const CafeteriaAPI = {
       formData.append('_wp_http_referer', '/');
       formData.append('login', 'Log in');
 
-      await fetch(`${API_BASE}/`, {
+      const loginRes = await fetch(`${API_BASE}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData.toString(),
         credentials: 'include'
       });
 
+      const loginHtml = await loginRes.text();
+      
+      // Check if WordPress rejected login
+      const isError = 
+        loginHtml.includes('woocommerce-error') || 
+        loginHtml.includes('The password you entered') ||
+        loginHtml.includes('Unknown username') ||
+        loginHtml.includes('Lost your password');
+
+      if (isError) {
+        throw new Error('Incorrect username or password. Please verify your credentials.');
+      }
+
+      // Check live authenticated checkout session
       const chkRes = await fetch(`${API_BASE}/wp-json/wc/store/v1/checkout`, {
         headers: getAuthHeaders(),
         credentials: 'include'
@@ -312,34 +325,49 @@ export const CafeteriaAPI = {
           firstName: b.first_name,
           lastName: b.last_name
         };
+        sessionStorage.removeItem('ssip_logged_out');
         sessionStorage.setItem('ssip_user_session', JSON.stringify(session));
         return session;
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e.message?.includes('Incorrect username or password')) {
+        throw e;
+      }
       console.warn('Live login network attempt error', e);
     }
 
-    const fallbackSession: UserSession = {
-      isLoggedIn: true,
-      username,
-      displayName: username.toUpperCase() === userOrdersData.username ? userOrdersData.displayName : username,
-      firstName: username.toUpperCase() === userOrdersData.username ? userOrdersData.firstName : undefined,
-      lastName: username.toUpperCase() === userOrdersData.username ? userOrdersData.lastName : undefined,
-      email: `${username.toLowerCase()}@shimano.com.sg`,
-      walletBalance: this.getWalletBalance(),
-      walletTransactions: this.getWalletTransactions()
-    };
-    sessionStorage.setItem('ssip_user_session', JSON.stringify(fallbackSession));
-    return fallbackSession;
+    // Static fallback verification: Only allow authentic employee credentials
+    if (username.trim().toUpperCase() === 'SIP279' && password === 'Farhanred1') {
+      const fallbackSession: UserSession = {
+        isLoggedIn: true,
+        username: userOrdersData.username,
+        displayName: userOrdersData.displayName,
+        firstName: userOrdersData.firstName,
+        lastName: userOrdersData.lastName,
+        email: 'employee@shimano.com.sg',
+        walletBalance: this.getWalletBalance(),
+        walletTransactions: this.getWalletTransactions()
+      };
+      sessionStorage.removeItem('ssip_logged_out');
+      sessionStorage.setItem('ssip_user_session', JSON.stringify(fallbackSession));
+      return fallbackSession;
+    }
+
+    throw new Error('Incorrect username or password. Please try again.');
   },
 
   /**
    * Return authentic past user orders from WooCommerce account
    */
   getAuthenticUserOrders(): UserOrder[] {
+    const session = this.getStoredSession();
+    if (!session || session.username.toUpperCase() !== userOrdersData.username) {
+      return [];
+    }
+
     const snapshotOrders = (userOrdersData.orders as any) as UserOrder[];
     try {
-      const saved = localStorage.getItem('ssip_user_orders');
+      const saved = localStorage.getItem(`ssip_user_orders_${session.username}`);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -359,22 +387,32 @@ export const CafeteriaAPI = {
    * Return current wallet balance
    */
   getWalletBalance(): number {
+    const session = this.getStoredSession();
+    if (!session || session.username.toUpperCase() !== userOrdersData.username) {
+      return 0;
+    }
+
     try {
-      const saved = localStorage.getItem('ssip_wallet_balance');
+      const saved = localStorage.getItem(`ssip_wallet_balance_${session.username}`);
       if (saved !== null) {
         const val = parseFloat(saved);
         if (!isNaN(val)) return val;
       }
     } catch {}
-    return userOrdersData.walletBalance || 38.10;
+    return userOrdersData.walletBalance || 0;
   },
 
   /**
    * Return authentic wallet transactions
    */
   getWalletTransactions(): WalletTransaction[] {
+    const session = this.getStoredSession();
+    if (!session || session.username.toUpperCase() !== userOrdersData.username) {
+      return [];
+    }
+
     try {
-      const saved = localStorage.getItem('ssip_wallet_txs');
+      const saved = localStorage.getItem(`ssip_wallet_txs_${session.username}`);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -405,7 +443,6 @@ export const CafeteriaAPI = {
 
   getStoredSession(): UserSession | null {
     try {
-      // If user explicitly logged out, respect it
       if (sessionStorage.getItem('ssip_logged_out') === 'true') {
         return null;
       }
@@ -413,19 +450,8 @@ export const CafeteriaAPI = {
       if (raw) return JSON.parse(raw);
     } catch {}
 
-    // Initial default profile for Farhan (SIP279) on first visit
-    const defaultSession: UserSession = {
-      isLoggedIn: true,
-      username: userOrdersData.username,
-      displayName: userOrdersData.displayName,
-      firstName: userOrdersData.firstName,
-      lastName: userOrdersData.lastName,
-      email: 'employee@shimano.com.sg',
-      walletBalance: this.getWalletBalance(),
-      walletTransactions: this.getWalletTransactions()
-    };
-    sessionStorage.setItem('ssip_user_session', JSON.stringify(defaultSession));
-    return defaultSession;
+    // No auto-login by default; require user to authenticate first
+    return null;
   },
 
   logout(): void {

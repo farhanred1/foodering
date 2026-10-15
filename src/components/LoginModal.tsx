@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 
 export const LoginModal: React.FC = () => {
   const { isLoginModalOpen, setIsLoginModalOpen, login } = useAuth();
-  const [username, setUsername] = useState('SIP279');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');

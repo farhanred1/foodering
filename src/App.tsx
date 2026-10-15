@@ -6,12 +6,15 @@ import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
 import { OrderSuccessModal } from './components/OrderSuccessModal';
 import { LoginModal } from './components/LoginModal';
+import { LoginPage } from './components/LoginPage';
 import { OrdersModal } from './components/OrdersModal';
 import { CafeteriaAPI } from './services/api';
 import { Shop, DailySchedule, CheckoutResult } from './types/cafeteria';
 import { SlidersHorizontal, ArrowUp, Calendar, Clock } from 'lucide-react';
+import { useAuth } from './context/AuthContext';
 
 export const App: React.FC = () => {
+  const { user } = useAuth();
   const [shops, setShops] = useState<Shop[]>([]);
   const [schedules, setSchedules] = useState<DailySchedule[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('All');
@@ -90,6 +93,11 @@ export const App: React.FC = () => {
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // If user is logged out, show the dedicated full-screen login page
+  if (!user) {
+    return <LoginPage />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
