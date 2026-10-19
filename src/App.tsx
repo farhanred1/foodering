@@ -47,7 +47,9 @@ export const App: React.FC = () => {
     const dd = String(now.getDate()).padStart(2, '0');
     const todayStr = `${yyyy}-${mm}-${dd}`;
 
-    const futureOrTodaySchedules = rawSchedules.filter((s) => s.date >= todayStr);
+    const futureOrTodaySchedules = rawSchedules
+      .filter((s) => s.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date));
     const activeSchedules = futureOrTodaySchedules.length > 0 ? futureOrTodaySchedules : rawSchedules;
     setSchedules(activeSchedules);
 

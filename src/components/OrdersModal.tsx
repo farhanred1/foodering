@@ -108,6 +108,20 @@ export const OrdersModal: React.FC = () => {
       else past.push(o);
     });
 
+    // Upcoming days increasing: next day -> next next days (ascending)
+    upcoming.sort((a, b) => {
+      const dateA = normalizeToIso(a.mealDate) || normalizeToIso(a.datePlaced) || '';
+      const dateB = normalizeToIso(b.mealDate) || normalizeToIso(b.datePlaced) || '';
+      return dateA.localeCompare(dateB);
+    });
+
+    // Past orders descending: most recent first
+    past.sort((a, b) => {
+      const dateA = normalizeToIso(a.mealDate) || normalizeToIso(a.datePlaced) || '';
+      const dateB = normalizeToIso(b.mealDate) || normalizeToIso(b.datePlaced) || '';
+      return dateB.localeCompare(dateA);
+    });
+
     return { todayOrders: today, upcomingOrders: upcoming, pastOrders: past };
   }, [orders, todayIso]);
 
