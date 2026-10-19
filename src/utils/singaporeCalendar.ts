@@ -181,3 +181,19 @@ export function calculateAllowance(workingDays: number, leaveDays: number, total
     remainingAllowanceFormatted: `$${remainingAllowance.toFixed(2)}`
   };
 }
+
+export function normalizeToIso(dateStr?: string): string {
+  if (!dateStr) return '';
+  const trimmed = dateStr.trim();
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return trimmed;
+
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) {
+    const yyyy = parsed.getFullYear();
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+    const dd = String(parsed.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return '';
+}
