@@ -9,7 +9,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  Sparkles,
+  Wallet,
   ShoppingBag,
   Palmtree,
   CalendarDays
@@ -19,7 +19,8 @@ import {
   calculateCycleWorkingDays,
   calculateAllowance,
   buildCycleCalendar,
-  CycleCalendarDay
+  CycleCalendarDay,
+  normalizeToIso
 } from '../utils/singaporeCalendar';
 import { useOrders } from '../context/OrdersContext';
 
@@ -32,7 +33,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
   isOpen,
   onClose
 }) => {
-  const { orders } = useOrders();
+  const { orders, walletBalance } = useOrders();
   const cycles = useMemo(() => getAllowanceCycles(), []);
   const [selectedCycleId, setSelectedCycleId] = useState<string>(() => {
     const current = cycles.find((c) => c.isCurrent);
@@ -69,6 +70,15 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
     return calculateCycleWorkingDays(activeCycle.startDate, activeCycle.endDate);
   }, [activeCycle]);
 
+  // Daily rate for the cycle ($100 / working days)
+  const dailyRate = useMemo(() => {
+    return 100 / Math.max(1, cycleDaysInfo.workingDays);
+  }, [cycleDaysInfo.workingDays]);
+
+  // Effective leave count
+  const effectiveLeaveCount = Math.max(leaveDays, leaveDates.length);
+  const leaveMoney = parseFloat((effectiveLeaveCount * dailyRate).toFixed(2));
+
   // Build the complete calendar day array with status for each date
   const { days: calendarDays, leadBlankDays } = useMemo(() => {
     return buildCycleCalendar(
@@ -80,21 +90,32 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
     );
   }, [activeCycle, orders, leaveDates, todayStr]);
 
+  // Food ordered in cycle from today until the 26th
+  const upcomingCycleOrders = useMemo(() => {
+    return orders.filter((o) => {
+      const iso = normalizeToIso(o.mealDate) || normalizeToIso(o.datePlaced);
+      if (!iso) return false;
+      return iso >= todayStr && iso <= activeCycle.endDate;
+    });
+  }, [orders, todayStr, activeCycle.endDate]);
+
+  const foodOrderedUntil26th = useMemo(() => {
+    const sum = upcomingCycleOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+    return parseFloat(sum.toFixed(2));
+  }, [upcomingCycleOrders]);
+
   // Summary counts from the calendar
   const calendarStats = useMemo(() => {
     let claimedCount = 0;
     let upcomingOrderedCount = 0;
     let upcomingNotOrderedCount = 0;
     let passedNoOrderCount = 0;
-    let foodTotal = 0;
 
     calendarDays.forEach((d) => {
       if (d.status === 'passed_claimed') {
         claimedCount++;
-        foodTotal += d.orderTotal || 0;
       } else if (d.status === 'today_ordered' || d.status === 'upcoming_ordered') {
         upcomingOrderedCount++;
-        foodTotal += d.orderTotal || 0;
       } else if (d.status === 'upcoming_not_ordered' || d.status === 'today_not_ordered') {
         upcomingNotOrderedCount++;
       } else if (d.status === 'passed_no_order') {
@@ -107,22 +128,15 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
       upcomingOrderedCount,
       upcomingNotOrderedCount,
       passedNoOrderCount,
-      totalOrderedCount: claimedCount + upcomingOrderedCount,
-      foodTotal: parseFloat(foodTotal.toFixed(2))
+      totalOrderedCount: claimedCount + upcomingOrderedCount
     };
   }, [calendarDays]);
 
-  // Allowance calculation accounting for leave
-  const effectiveLeaveCount = Math.max(leaveDays, leaveDates.length);
-  const allowanceCalc = useMemo(() => {
-    return calculateAllowance(cycleDaysInfo.workingDays, effectiveLeaveCount, 100);
-  }, [cycleDaysInfo.workingDays, effectiveLeaveCount]);
+  // User requirement 1: Allowance left = Current wallet balance minus leave days money
+  const allowanceLeft = parseFloat((walletBalance - leaveMoney).toFixed(2));
 
-  // 1. Allowance left accounting for leave
-  const allowanceAfterLeave = allowanceCalc.remainingAllowance;
-
-  // 2. Net balance left accounting for leave AND food ordered
-  const balanceAfterFood = parseFloat((allowanceAfterLeave - calendarStats.foodTotal).toFixed(2));
+  // User requirement 2: Remaining balance = Current balance - leave days money - order food until 26th
+  const remainingBalance = parseFloat((allowanceLeft - foodOrderedUntil26th).toFixed(2));
 
   // Toggle leave on calendar day tap
   const handleToggleDayLeave = (day: CycleCalendarDay) => {
@@ -154,30 +168,30 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
       />
 
       {/* Modal Dialog */}
-      <div className="relative bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden z-10 flex flex-col border border-slate-100 animate-in zoom-in-95 duration-150 max-h-[94vh]">
+      <div className="relative bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden z-10 flex flex-col border border-slate-100 animate-in zoom-in-95 duration-150 max-h-[92vh]">
         
         {/* Minimal Header */}
-        <div className="px-4 sm:px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
+        <div className="px-4 sm:px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
-              <Calculator className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+              <Calculator className="w-3.5 h-3.5" />
             </div>
             <div>
-              <span className="font-extrabold text-slate-900 text-sm sm:text-base block leading-tight">
-                Allowance & Calendar Status
+              <span className="font-extrabold text-slate-900 text-sm block leading-tight">
+                Allowance & Balance Calculator
               </span>
               <span className="text-[10px] text-slate-400 font-semibold">
-                Leave Deductions & Food Order Tracker
+                Wallet, Leave & Food Orders Until 26th
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {/* Clickable (i) info button */}
             <button
               type="button"
               onClick={() => setShowInfo((prev) => !prev)}
-              aria-label="Allowance policy details"
+              aria-label="Calculation explanation"
               className={`p-1.5 rounded-full transition-colors cursor-pointer ${
                 showInfo
                   ? 'bg-indigo-100 text-indigo-700'
@@ -200,29 +214,27 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
         </div>
 
         {/* Modal Body */}
-        <div className="p-3.5 sm:p-5 space-y-3.5 overflow-y-auto">
+        <div className="p-3.5 sm:p-4 space-y-3 overflow-y-auto">
           
           {/* Collapsible Info Popover */}
           {showInfo && (
-            <div className="p-3 bg-indigo-50/90 border border-indigo-200/80 rounded-2xl text-xs text-indigo-900 space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
-              <div className="font-bold flex items-center gap-1.5 text-indigo-950">
-                <AlertCircle className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                <span>How This Calculation Works</span>
+            <div className="p-2.5 bg-indigo-50/90 border border-indigo-200/80 rounded-xl text-xs text-indigo-900 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="font-bold flex items-center gap-1.5 text-indigo-950 text-[11px]">
+                <AlertCircle className="w-3 h-3 text-indigo-600 shrink-0" />
+                <span>Calculation Formulas</span>
               </div>
-              <p className="text-[11px] leading-relaxed text-indigo-900/90">
-                • <strong>Monthly Cycle</strong>: 27th of one month to 26th of the next with $100 allocation.
+              <p className="text-[10px] leading-relaxed text-indigo-900/90">
+                • <strong>Daily Rate</strong>: $100 ÷ {cycleDaysInfo.workingDays} working days = ${dailyRate.toFixed(2)}/day.
                 <br />
-                • <strong>Working Days</strong>: Weekdays excluding Singapore gazetted public holidays.
+                • <strong>Allowance Left</strong> = Current Wallet (${walletBalance.toFixed(2)}) − Leave Days Money.
                 <br />
-                • <strong>1. Balance after Leave</strong> = $100 − (Leave Days × Daily Rate).
-                <br />
-                • <strong>2. Balance after Food</strong> = (Balance after Leave) − (Total Food Ordered in Cycle).
+                • <strong>Remaining Balance</strong> = Current Wallet − Leave Days Money − Food Ordered until 26th.
               </p>
             </div>
           )}
 
-          {/* Cycle Selector (27th to 26th) */}
-          <div className="flex items-center justify-between gap-2 p-1 bg-slate-100 rounded-2xl">
+          {/* Cycle & Wallet Status Bar */}
+          <div className="flex items-center justify-between gap-2 p-1 bg-slate-100 rounded-xl">
             {cycles.filter((c) => !c.id.includes('2026-08')).map((c) => {
               const isSelected = c.id === selectedCycleId;
               const shortLabel = c.label.replace('2026', '').replace('2027', '').trim();
@@ -231,29 +243,59 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
                   key={c.id}
                   type="button"
                   onClick={() => setSelectedCycleId(c.id)}
-                  className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer ${
+                  className={`flex-1 py-1 px-2 rounded-lg text-[11px] font-bold transition-all text-center cursor-pointer ${
                     isSelected
                       ? 'bg-white text-indigo-900 shadow-xs border border-slate-200/60'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <div>{shortLabel}</div>
-                  <div className="text-[10px] font-normal text-slate-400">
-                    {c.isCurrent ? 'Current Active Cycle' : 'Next Cycle'}
+                  <div className="text-[9px] font-normal text-slate-400">
+                    {c.isCurrent ? 'Current Cycle' : 'Next Cycle'}
                   </div>
                 </button>
               );
             })}
           </div>
 
+          {/* Quick Metrics Header Row: Live Wallet Balance & Working Days */}
+          <div className="grid grid-cols-3 gap-1.5 text-center">
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200/70">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                Current Wallet
+              </span>
+              <span className="text-xs sm:text-sm font-black text-slate-900">
+                ${walletBalance.toFixed(2)}
+              </span>
+            </div>
+
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200/70">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                Daily Rate
+              </span>
+              <span className="text-xs sm:text-sm font-black text-indigo-700">
+                ${dailyRate.toFixed(2)}/d
+              </span>
+            </div>
+
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200/70">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                Food Until 26th
+              </span>
+              <span className="text-xs sm:text-sm font-black text-brand-700">
+                -${foodOrderedUntil26th.toFixed(2)}
+              </span>
+            </div>
+          </div>
+
           {/* Leave Days Stepper */}
-          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between">
             <div>
               <span className="text-xs font-bold text-slate-800 block">
                 Leave Days Taken
               </span>
               <span className="text-[10px] text-slate-400">
-                Deducts {allowanceCalc.dailyRateFormatted}/day (or tap days below)
+                Deducts -${dailyRate.toFixed(2)}/day (or tap days on calendar)
               </span>
             </div>
 
@@ -265,12 +307,12 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
                   setLeaveDates([]);
                 }}
                 disabled={effectiveLeaveCount <= 0}
-                className="w-7 h-7 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs cursor-pointer active:scale-95"
+                className="w-6 h-6 rounded-md bg-white border border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs cursor-pointer active:scale-95"
               >
                 <Minus className="w-3 h-3" />
               </button>
 
-              <div className="w-10 text-center font-black text-slate-900 text-xs">
+              <div className="w-8 text-center font-black text-slate-900 text-xs">
                 {effectiveLeaveCount}d
               </div>
 
@@ -281,93 +323,84 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
                   setLeaveDates([]);
                 }}
                 disabled={effectiveLeaveCount >= cycleDaysInfo.workingDays}
-                className="w-7 h-7 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs cursor-pointer active:scale-95"
+                className="w-6 h-6 rounded-md bg-white border border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs cursor-pointer active:scale-95"
               >
                 <Plus className="w-3 h-3" />
               </button>
             </div>
           </div>
 
-          {/* CALENDAR STATUS VIEW (Small Colored Calendar) */}
-          <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-2.5">
+          {/* COMPACT CALENDAR STATUS VIEW */}
+          <div className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/90 space-y-1.5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <CalendarDays className="w-4 h-4 text-indigo-600" />
-                <span className="text-xs font-extrabold text-slate-900">
-                  Cycle Meal Status Calendar
+              <div className="flex items-center gap-1">
+                <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="text-[11px] font-extrabold text-slate-900">
+                  Cycle Calendar (27th – 26th)
                 </span>
               </div>
-              <span className="text-[11px] font-bold text-slate-600">
-                {calendarStats.totalOrderedCount} meals ordered (${calendarStats.foodTotal.toFixed(2)})
+              <span className="text-[10px] font-semibold text-slate-500">
+                {upcomingCycleOrders.length} meals pre-ordered until 26th (${foodOrderedUntil26th.toFixed(2)})
               </span>
             </div>
 
             {/* 7-Day Header */}
-            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-black uppercase tracking-wider text-slate-400 pb-1 border-b border-slate-200">
-              <span>Mon</span>
-              <span>Tue</span>
-              <span>Wed</span>
-              <span>Thu</span>
-              <span>Fri</span>
-              <span className="text-slate-300">Sat</span>
-              <span className="text-slate-300">Sun</span>
+            <div className="grid grid-cols-7 gap-0.5 text-center text-[8px] font-bold uppercase tracking-wider text-slate-400 pb-0.5 border-b border-slate-200">
+              <span>M</span>
+              <span>T</span>
+              <span>W</span>
+              <span>T</span>
+              <span>F</span>
+              <span className="text-slate-300">S</span>
+              <span className="text-slate-300">S</span>
             </div>
 
-            {/* Calendar Day Grid */}
-            <div className="grid grid-cols-7 gap-1 text-center">
+            {/* Compact Day Grid */}
+            <div className="grid grid-cols-7 gap-0.5 text-center">
               {/* Leading blank slots */}
               {Array.from({ length: leadBlankDays }).map((_, idx) => (
-                <div key={`blank-${idx}`} className="w-full aspect-square" />
+                <div key={`blank-${idx}`} className="w-full h-6 sm:h-7" />
               ))}
 
               {/* Cycle Days */}
               {calendarDays.map((day) => {
                 const isSelected = selectedDayDetail?.date === day.date;
                 
-                // Color and style mapping
                 let cellClass = '';
-                let badgeIcon: React.ReactNode = null;
+                let dotIcon: React.ReactNode = null;
 
                 switch (day.status) {
                   case 'passed_claimed':
-                    // Passed day with order claimed/completed
-                    cellClass = 'bg-emerald-600 text-white font-bold shadow-xs';
-                    badgeIcon = <CheckCircle2 className="w-2.5 h-2.5 inline text-emerald-200" />;
+                    cellClass = 'bg-emerald-600 text-white font-bold';
+                    dotIcon = <span className="w-1 h-1 rounded-full bg-emerald-200 inline-block" />;
                     break;
                   case 'today_ordered':
-                    // Today with order placed
-                    cellClass = 'bg-emerald-700 text-white font-black ring-2 ring-emerald-500 shadow-sm';
-                    badgeIcon = <span className="w-1.5 h-1.5 rounded-full bg-white inline-block animate-pulse" />;
+                    cellClass = 'bg-emerald-700 text-white font-black ring-1 ring-emerald-500';
+                    dotIcon = <span className="w-1 h-1 rounded-full bg-white inline-block animate-pulse" />;
                     break;
                   case 'today_not_ordered':
-                    // Today without order placed
-                    cellClass = 'bg-amber-100 text-amber-900 border border-amber-300 ring-2 ring-amber-400 font-black';
+                    cellClass = 'bg-amber-100 text-amber-900 border border-amber-300 font-bold';
                     break;
                   case 'upcoming_ordered':
-                    // Upcoming day with order confirmed
-                    cellClass = 'bg-brand-600 text-white font-bold shadow-xs';
-                    badgeIcon = <ShoppingBag className="w-2 h-2 inline text-brand-200" />;
+                    cellClass = 'bg-brand-600 text-white font-bold';
+                    dotIcon = <span className="w-1 h-1 rounded-full bg-brand-200 inline-block" />;
                     break;
                   case 'upcoming_not_ordered':
-                    // Upcoming day without order
-                    cellClass = 'bg-white text-slate-700 border-2 border-dashed border-slate-300 hover:border-brand-500 font-bold';
+                    cellClass = 'bg-white text-slate-700 border border-dashed border-slate-300 hover:border-brand-500 font-semibold';
                     break;
                   case 'passed_no_order':
-                    // Passed weekday without order
-                    cellClass = 'bg-slate-200/70 text-slate-400 line-through';
+                    cellClass = 'bg-slate-200/50 text-slate-400 line-through';
                     break;
                   case 'leave':
-                    // Day marked as leave
-                    cellClass = 'bg-purple-600 text-white font-black shadow-xs';
-                    badgeIcon = <Palmtree className="w-2.5 h-2.5 inline text-purple-200" />;
+                    cellClass = 'bg-purple-600 text-white font-black';
+                    dotIcon = <span className="w-1 h-1 rounded-full bg-purple-200 inline-block" />;
                     break;
                   case 'holiday':
-                    // Public holiday
-                    cellClass = 'bg-amber-100 text-amber-900 border border-amber-200 font-semibold';
+                    cellClass = 'bg-amber-100 text-amber-800 border border-amber-200 font-semibold';
                     break;
                   case 'weekend':
                   default:
-                    cellClass = 'bg-slate-100/40 text-slate-300';
+                    cellClass = 'bg-slate-100/30 text-slate-300';
                     break;
                 }
 
@@ -376,13 +409,13 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
                     key={day.date}
                     type="button"
                     onClick={() => handleToggleDayLeave(day)}
-                    className={`relative w-full aspect-square rounded-xl flex flex-col items-center justify-center text-[11px] transition-all cursor-pointer ${cellClass} ${
+                    className={`h-6 sm:h-7 rounded-md flex flex-col items-center justify-center text-[10px] transition-all cursor-pointer ${cellClass} ${
                       isSelected ? 'ring-2 ring-slate-900 scale-105 z-10' : ''
                     }`}
                     title={`${day.date}: ${day.statusLabel}`}
                   >
-                    <span className="leading-none">{day.dayNum}</span>
-                    {badgeIcon && <span className="absolute bottom-0.5 leading-none">{badgeIcon}</span>}
+                    <span className="leading-none text-[9px] sm:text-[10px]">{day.dayNum}</span>
+                    {dotIcon && <span className="leading-none mt-0.5">{dotIcon}</span>}
                   </button>
                 );
               })}
@@ -390,126 +423,117 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
 
             {/* Selected Day Detail Popover / Bar */}
             {selectedDayDetail && (
-              <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs space-y-1 animate-in fade-in duration-100">
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-slate-900">
-                    {new Date(selectedDayDetail.date).toLocaleDateString('en-US', {
-                      weekday: 'short',
-                      month: 'short',
-                      day: 'numeric'
-                    })}
-                  </span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                    {selectedDayDetail.statusLabel}
-                  </span>
-                </div>
-                {selectedDayDetail.itemsSummary && (
-                  <p className="text-[11px] text-slate-600 truncate">
-                    Menu: {selectedDayDetail.itemsSummary}
-                  </p>
-                )}
+              <div className="p-1.5 bg-white rounded-lg border border-slate-200 text-[10px] flex items-center justify-between animate-in fade-in duration-100">
+                <span className="font-bold text-slate-900 truncate">
+                  {new Date(selectedDayDetail.date).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                  })}: {selectedDayDetail.statusLabel}
+                </span>
                 {selectedDayDetail.isWorkingDay && (
-                  <div className="text-[10px] text-indigo-600 font-semibold pt-0.5">
-                    {leaveDates.includes(selectedDayDetail.date)
-                      ? '✓ Marked as Leave (Click again to remove)'
-                      : 'Click to mark/unmark this day as leave'}
-                  </div>
+                  <span className="text-indigo-600 font-bold shrink-0 ml-1">
+                    {leaveDates.includes(selectedDayDetail.date) ? '✓ Leave' : 'Tap to mark leave'}
+                  </span>
                 )}
               </div>
             )}
 
-            {/* Calendar Legend Bar */}
-            <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center justify-between gap-1.5 text-[10px] text-slate-600 font-medium">
+            {/* Compact Legend Bar */}
+            <div className="pt-1 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-1 text-[9px] text-slate-500 font-medium">
               <div className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-md bg-emerald-600 inline-block shrink-0" />
+                <span className="w-2 h-2 rounded-xs bg-emerald-600 inline-block shrink-0" />
                 <span>Claimed ({calendarStats.claimedCount})</span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-md bg-brand-600 inline-block shrink-0" />
+                <span className="w-2 h-2 rounded-xs bg-brand-600 inline-block shrink-0" />
                 <span>Pre-ordered ({calendarStats.upcomingOrderedCount})</span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-md bg-white border border-dashed border-slate-400 inline-block shrink-0" />
+                <span className="w-2 h-2 rounded-xs bg-white border border-dashed border-slate-400 inline-block shrink-0" />
                 <span>Not Placed ({calendarStats.upcomingNotOrderedCount})</span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-md bg-purple-600 inline-block shrink-0" />
+                <span className="w-2 h-2 rounded-xs bg-purple-600 inline-block shrink-0" />
                 <span>Leave ({leaveDates.length})</span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-md bg-slate-200 inline-block shrink-0" />
+                <span className="w-2 h-2 rounded-xs bg-slate-200 inline-block shrink-0" />
                 <span>Passed No Order ({calendarStats.passedNoOrderCount})</span>
               </div>
             </div>
           </div>
 
-          {/* TWO PRIMARY RESULTS CARDS */}
+          {/* TWO PRIMARY RESULTS CARDS (User Defined Math) */}
           <div className="space-y-2 pt-0.5">
             
-            {/* 1. ALLOWANCE LEFT ACCOUNTING FOR LEAVE */}
-            <div className="p-3.5 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl shadow-sm border border-slate-800">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-300">
-                  1. Allowance Left (Accounting for Leave)
+            {/* 1. ALLOWANCE LEFT = Current Wallet Balance - Leave Days Money */}
+            <div className="p-3 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-xl shadow-xs border border-slate-800">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300">
+                  1. Allowance Left (Wallet − Leave)
                 </span>
-                <span className="text-[10px] text-indigo-200 bg-white/10 px-2 py-0.5 rounded-full">
-                  {allowanceCalc.eligibleDays} of {cycleDaysInfo.workingDays} days
+                <span className="text-[9px] text-indigo-200 bg-white/10 px-1.5 py-0.2 rounded-full">
+                  Wallet ${walletBalance.toFixed(2)} − Leave ${leaveMoney.toFixed(2)}
                 </span>
               </div>
 
               <div className="flex items-baseline justify-between">
                 <div className="text-2xl sm:text-3xl font-black text-white">
-                  {allowanceCalc.remainingAllowanceFormatted}
+                  ${allowanceLeft.toFixed(2)}
                 </div>
-                <div className="text-right text-[11px] text-indigo-200">
+                <div className="text-right text-[10px] text-indigo-200">
                   {effectiveLeaveCount > 0 ? (
-                    <span>$100.00 − {allowanceCalc.leaveDeductionFormatted} ({effectiveLeaveCount}d leave)</span>
+                    <span>${walletBalance.toFixed(2)} − ${leaveMoney.toFixed(2)} ({effectiveLeaveCount}d leave)</span>
                   ) : (
-                    <span className="text-emerald-400 font-semibold">Full $100.00 allowance (0d leave)</span>
+                    <span className="text-emerald-400 font-semibold">${walletBalance.toFixed(2)} (0 days leave taken)</span>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* 2. NET BALANCE LEFT ACCOUNTING FOR FOOD ORDERED */}
-            <div className={`p-3.5 sm:p-4 rounded-2xl shadow-md border ${
-              balanceAfterFood >= 0
+            {/* 2. REMAINING BALANCE = Current Balance - Leave Days Money - Food Ordered until 26th */}
+            <div className={`p-3.5 rounded-xl shadow-md border ${
+              remainingBalance >= 0
                 ? 'bg-gradient-to-br from-emerald-950 via-slate-900 to-teal-950 border-emerald-500/30 text-white'
                 : 'bg-gradient-to-br from-rose-950 via-slate-900 to-red-950 border-rose-500/30 text-white'
             }`}>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-300">
-                  2. Remaining Balance (Accounting for Food)
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">
+                  2. Remaining Balance (Until 26th)
                 </span>
-                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                  balanceAfterFood >= 0
+                <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                  remainingBalance >= 0
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                     : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                 }`}>
-                  {balanceAfterFood >= 0 ? 'Surplus Available' : 'Allowance Exceeded'}
+                  {remainingBalance >= 0 ? 'Surplus Left' : 'Allowance Exceeded'}
                 </span>
               </div>
 
               <div className="flex items-baseline justify-between">
                 <div>
-                  <div className={`text-3xl sm:text-4xl font-black tracking-tight ${
-                    balanceAfterFood >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                  <div className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                    remainingBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'
                   }`}>
-                    ${Math.abs(balanceAfterFood).toFixed(2)}
+                    ${Math.abs(remainingBalance).toFixed(2)}
                   </div>
-                  <span className="text-[10px] text-slate-300 mt-0.5 block">
-                    {balanceAfterFood >= 0
-                      ? 'Available subsidy left to spend on upcoming meals'
-                      : 'Exceeded allowance; excess payable out of pocket'}
+                  <span className="text-[9px] text-slate-300 mt-0.5 block">
+                    {remainingBalance >= 0
+                      ? 'Net surplus left after leave and food pre-orders until 26th'
+                      : 'Exceeded budget; excess payable out of pocket'}
                   </span>
                 </div>
 
-                <div className="text-right text-xs space-y-0.5">
-                  <div className="text-slate-300 text-[11px]">
-                    Allowance: <span className="font-bold text-white">${allowanceAfterLeave.toFixed(2)}</span>
+                <div className="text-right text-[10px] space-y-0.5">
+                  <div className="text-slate-300">
+                    Wallet: <span className="font-bold text-white">${walletBalance.toFixed(2)}</span>
                   </div>
-                  <div className="text-rose-300 text-[11px]">
-                    Food: <span className="font-bold text-rose-300">-${calendarStats.foodTotal.toFixed(2)}</span>
+                  <div className="text-indigo-200">
+                    Leave: <span className="font-bold text-indigo-300">-${leaveMoney.toFixed(2)}</span>
+                  </div>
+                  <div className="text-rose-300">
+                    Food until 26th: <span className="font-bold text-rose-300">-${foodOrderedUntil26th.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -520,11 +544,11 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-end shrink-0">
+        <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50 flex items-center justify-end shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="w-full sm:w-auto px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+            className="w-full sm:w-auto px-5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
           >
             Done
           </button>
