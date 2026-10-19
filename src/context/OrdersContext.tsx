@@ -7,6 +7,7 @@ interface OrdersContextType {
   orders: UserOrder[];
   addOrder: (order: UserOrder) => void;
   clearOrders: () => void;
+  refreshOrders: () => void;
   isOrdersOpen: boolean;
   setIsOrdersOpen: (open: boolean) => void;
   activeTab: 'orders' | 'wallet';
@@ -29,7 +30,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [activeTab, setActiveTab] = useState<'orders' | 'wallet'>('orders');
 
   // Synchronize with active user login/logout
-  useEffect(() => {
+  const refreshOrders = () => {
     if (user) {
       setOrders(CafeteriaAPI.getAuthenticUserOrders());
       setWalletBalance(CafeteriaAPI.getWalletBalance());
@@ -40,7 +41,18 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setWalletTransactions([]);
       setIsOrdersOpen(false);
     }
+  };
+
+  useEffect(() => {
+    refreshOrders();
   }, [user]);
+
+  // When wallet modal is opened, always refresh immediately
+  useEffect(() => {
+    if (isOrdersOpen && user) {
+      refreshOrders();
+    }
+  }, [isOrdersOpen, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -87,6 +99,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         orders,
         addOrder,
         clearOrders,
+        refreshOrders,
         isOrdersOpen,
         setIsOrdersOpen,
         activeTab,

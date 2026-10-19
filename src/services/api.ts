@@ -425,8 +425,13 @@ export const CafeteriaAPI = {
    * Deduct amount from wallet balance upon cafeteria order
    */
   deductWallet(amount: number, details?: string): number {
+    const session = this.getStoredSession();
+    const username = session?.username || userOrdersData.username;
     const current = this.getWalletBalance();
     const updated = Math.max(0, parseFloat((current - amount).toFixed(2)));
+
+    // Save to user-specific keys and fallback keys
+    localStorage.setItem(`ssip_wallet_balance_${username}`, updated.toString());
     localStorage.setItem('ssip_wallet_balance', updated.toString());
 
     const txs = this.getWalletTransactions();
@@ -437,7 +442,9 @@ export const CafeteriaAPI = {
       date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
       details: details || 'Source 02 Terminal 02 Canteen 02 Machine: MP 02'
     };
-    localStorage.setItem('ssip_wallet_txs', JSON.stringify([newTx, ...txs]));
+    const updatedTxs = [newTx, ...txs];
+    localStorage.setItem(`ssip_wallet_txs_${username}`, JSON.stringify(updatedTxs));
+    localStorage.setItem('ssip_wallet_txs', JSON.stringify(updatedTxs));
     return updated;
   },
 

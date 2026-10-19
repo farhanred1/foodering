@@ -46,7 +46,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
 
       // Determine meal date for order
       const dates = cart.items.map(i => i.mealDate).filter(Boolean) as string[];
-      const mealDate = dates.length > 0 ? dates[0] : '2026-10-16';
+      const todayIso = (() => {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      })();
+      const mealDate = dates.length > 0 ? dates[0] : todayIso;
 
       // Save order to native order history
       addOrder({

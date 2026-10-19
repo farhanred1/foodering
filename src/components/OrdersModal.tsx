@@ -1,32 +1,41 @@
-import React, { useState, useMemo } from 'react';
-import { X, Wallet, Clock, CheckCircle2, ChevronDown, ChevronUp, Calendar, ArrowDownRight, User, AlertCircle, ShoppingBag } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { X, Wallet, Clock, CheckCircle2, ChevronDown, ChevronUp, Calendar, ArrowDownRight, User, AlertCircle, ShoppingBag, RefreshCw } from 'lucide-react';
 import { useOrders } from '../context/OrdersContext';
 import { useAuth } from '../context/AuthContext';
 import { UserOrder } from '../types/cafeteria';
 
-function categorizeOrder(order: UserOrder): 'today' | 'upcoming' | 'past' {
-  const targetStr = order.mealDate || order.datePlaced || '';
-  const str = targetStr.toLowerCase();
+function getTodayIso(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
-  // Today is October 15, 2026
-  if (str.includes('oct 15') || str.includes('october 15') || str.includes('2026-10-15')) {
-    return 'today';
-  }
+function normalizeToIso(dateStr?: string): string {
+  if (!dateStr) return '';
+  const trimmed = dateStr.trim();
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return trimmed;
 
-  const parsed = new Date(targetStr);
+  const parsed = new Date(trimmed);
   if (!isNaN(parsed.getTime())) {
-    const today = new Date('2026-10-15T00:00:00');
-    parsed.setHours(0, 0, 0, 0);
-    if (parsed.getTime() === today.getTime()) return 'today';
-    if (parsed.getTime() > today.getTime()) return 'upcoming';
-    return 'past';
+    const yyyy = parsed.getFullYear();
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+    const dd = String(parsed.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   }
+  return '';
+}
 
-  const matchDay = str.match(/oct(?:ober)?\s*(\d{1,2})/);
-  if (matchDay) {
-    const day = parseInt(matchDay[1], 10);
-    if (day === 15) return 'today';
-    if (day > 15) return 'upcoming';
+function categorizeOrder(order: UserOrder, todayIso: string): 'today' | 'upcoming' | 'past' {
+  const mealIso = normalizeToIso(order.mealDate);
+  const placedIso = normalizeToIso(order.datePlaced);
+  const targetIso = mealIso || placedIso;
+
+  if (targetIso) {
+    if (targetIso === todayIso) return 'today';
+    if (targetIso > todayIso) return 'upcoming';
     return 'past';
   }
 
@@ -35,22 +44,57 @@ function categorizeOrder(order: UserOrder): 'today' | 'upcoming' | 'past' {
 
 function formatDateLabel(dateStr?: string): string {
   if (!dateStr) return '';
-  if (dateStr.includes('2026-10-16') || dateStr.toLowerCase().includes('oct 16')) return 'Friday, Oct 16, 2026';
-  if (dateStr.includes('2026-10-19') || dateStr.toLowerCase().includes('oct 19')) return 'Monday, Oct 19, 2026';
-  if (dateStr.includes('2026-10-20') || dateStr.toLowerCase().includes('oct 20')) return 'Tuesday, Oct 20, 2026';
-  if (dateStr.includes('2026-10-21') || dateStr.toLowerCase().includes('oct 21')) return 'Wednesday, Oct 21, 2026';
-  if (dateStr.includes('2026-10-22') || dateStr.toLowerCase().includes('oct 22')) return 'Thursday, Oct 22, 2026';
-  if (dateStr.includes('2026-10-23') || dateStr.toLowerCase().includes('oct 23')) return 'Friday, Oct 23, 2026';
-  if (dateStr.includes('2026-10-26') || dateStr.toLowerCase().includes('oct 26')) return 'Monday, Oct 26, 2026';
-  if (dateStr.includes('2026-10-27') || dateStr.toLowerCase().includes('oct 27')) return 'Tuesday, Oct 27, 2026';
-  if (dateStr.includes('2026-10-28') || dateStr.toLowerCase().includes('oct 28')) return 'Wednesday, Oct 28, 2026';
+  const isoMatch = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const [_, y, m, d] = isoMatch;
+    const dateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    return dateObj.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+  const parsed = new Date(dateStr);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
   return dateStr;
 }
 
 export const OrdersModal: React.FC = () => {
-  const { orders, isOrdersOpen, setIsOrdersOpen, walletBalance, walletTransactions } = useOrders();
+  const { orders, isOrdersOpen, setIsOrdersOpen, walletBalance, walletTransactions, refreshOrders } = useOrders();
   const { user } = useAuth();
   const [showPastHistory, setShowPastHistory] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const todayIso = useMemo(() => getTodayIso(), []);
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }, []);
+
+  // Auto-refresh upon opening modal
+  useEffect(() => {
+    if (isOrdersOpen) {
+      refreshOrders();
+    }
+  }, [isOrdersOpen]);
+
+  const handleManualRefresh = () => {
+    setIsRefreshing(true);
+    refreshOrders();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   const { todayOrders, upcomingOrders, pastOrders } = useMemo(() => {
     const today: UserOrder[] = [];
@@ -58,14 +102,14 @@ export const OrdersModal: React.FC = () => {
     const past: UserOrder[] = [];
 
     orders.forEach((o) => {
-      const cat = categorizeOrder(o);
+      const cat = categorizeOrder(o, todayIso);
       if (cat === 'today') today.push(o);
       else if (cat === 'upcoming') upcoming.push(o);
       else past.push(o);
     });
 
     return { todayOrders: today, upcomingOrders: upcoming, pastOrders: past };
-  }, [orders]);
+  }, [orders, todayIso]);
 
   if (!isOrdersOpen || !user) return null;
 
@@ -98,12 +142,22 @@ export const OrdersModal: React.FC = () => {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setIsOrdersOpen(false)}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleManualRefresh}
+              className="p-2 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-full transition-all cursor-pointer"
+              title="Refresh wallet balance & order status"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-emerald-600' : ''}`} />
+            </button>
+            <button
+              onClick={() => setIsOrdersOpen(false)}
+              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Scrollable Body */}
@@ -146,13 +200,13 @@ export const OrdersModal: React.FC = () => {
             </div>
           </div>
 
-          {/* 2. TODAY'S FOOD ORDERS (October 15, 2026) */}
+          {/* 2. TODAY'S FOOD ORDERS */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span>Today's Lunch Order</span>
-                <span className="text-xs font-normal text-slate-400">(Thu, Oct 15, 2026)</span>
+                <span className="text-xs font-normal text-slate-400">({todayLabel})</span>
               </h4>
               <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                 {todayOrders.length} {todayOrders.length === 1 ? 'Meal' : 'Meals'}
@@ -206,12 +260,12 @@ export const OrdersModal: React.FC = () => {
                     ))}
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      <span>{order.datePlaced}</span>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="font-semibold text-slate-700">{formatDateLabel(order.mealDate || order.datePlaced)}</span>
                     </span>
-                    <span className="text-emerald-700 font-bold">
+                    <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 text-[10px]">
                       Paid via Konbini Wallet
                     </span>
                   </div>
