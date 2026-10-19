@@ -270,147 +270,264 @@ export const CafeteriaAPI = {
   },
 
   /**
-   * User login against WooCommerce portal
+   * Authentic User login against WooCommerce portal
+   * Validates staff credentials against the real backend, retrieves staff profile,
+   * live wallet balance, and order history strictly for this session.
    */
   async login(username: string, password: string): Promise<UserSession> {
+    const cleanUser = username.trim().toUpperCase();
+    if (!cleanUser || !password) {
+      throw new Error('Please enter both your Employee ID / Username and Password.');
+    }
+
+    // 1. Fetch WooCommerce login form to get authentic login nonce
+    let nonce = '';
     try {
-      const initialRes = await fetch(`${API_BASE}/`);
+      const initialRes = await fetch(`${API_BASE}/my-account/`, { credentials: 'include' });
+      if (!initialRes.ok) {
+        throw new Error(`Unable to connect to cafeteria server (HTTP ${initialRes.status}).`);
+      }
       const html = await initialRes.text();
-      const nonceMatch = html.match(/name=['"]woocommerce-login-nonce['"]\s+value=['"]([^'"]+)['"]/);
-      const nonce = nonceMatch ? nonceMatch[1] : '';
+      const nonceMatch = html.match(/name=['"]woocommerce-login-nonce['"]\s+value=['"]([^'"]+)['"]/i);
+      if (nonceMatch && nonceMatch[1]) {
+        nonce = nonceMatch[1];
+      }
+    } catch (err: any) {
+      if (err.message && err.message.includes('fetch')) {
+        throw new Error('Network error connecting to cafeteria portal. Please ensure you are connected to the network.');
+      }
+      throw err;
+    }
 
-      const formData = new URLSearchParams();
-      formData.append('username', username);
-      formData.append('password', password);
-      formData.append('woocommerce-login-nonce', nonce);
-      formData.append('_wp_http_referer', '/');
-      formData.append('login', 'Log in');
+    if (!nonce) {
+      throw new Error('Could not establish secure login session. Please reload and try again.');
+    }
 
-      const loginRes = await fetch(`${API_BASE}/`, {
+    // 2. Submit credentials to WooCommerce login endpoint
+    const formData = new URLSearchParams();
+    formData.append('username', username.trim());
+    formData.append('password', password);
+    formData.append('woocommerce-login-nonce', nonce);
+    formData.append('_wp_http_referer', '/my-account/');
+    formData.append('login', 'Log in');
+
+    let loginRes: Response;
+    try {
+      loginRes = await fetch(`${API_BASE}/my-account/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData.toString(),
         credentials: 'include'
       });
-
-      const loginHtml = await loginRes.text();
-      
-      // Check if WordPress rejected login
-      const isError = 
-        loginHtml.includes('woocommerce-error') || 
-        loginHtml.includes('The password you entered') ||
-        loginHtml.includes('Unknown username') ||
-        loginHtml.includes('Lost your password');
-
-      if (isError) {
-        const errMatch = loginHtml.match(/<ul class="woocommerce-error"[^>]*>([\s\S]*?)<\/ul>/i);
-        const cleanMsg = errMatch ? errMatch[1].replace(/<[^>]+>/g, '').trim() : 'Incorrect username or password. Please verify your credentials.';
-        throw new Error(cleanMsg);
-      }
-
-      if (loginRes.ok) {
-        const cleanUser = username.trim().toUpperCase();
-        let displayName = cleanUser.startsWith('SIP') ? `SHIMANO EMPLOYEE #${cleanUser.replace(/^SIP/i, '')}` : cleanUser;
-        let firstName = cleanUser;
-        let lastName = '';
-        let email = `${cleanUser.toLowerCase()}@shimano.com.sg`;
-        let walletBalance = 100.0;
-        const orders: UserOrder[] = [];
-        const transactions: WalletTransaction[] = [];
-
-        // 1. Scrape authenticated profile name from /my-account/
-        try {
-          const accRes = await fetch(`${API_BASE}/my-account/`, { credentials: 'include' });
-          if (accRes.ok) {
-            const accHtml = await accRes.text();
-            const greeting = accHtml.match(/Hello\s+<strong>([^<]+)<\/strong>/i) ||
-                             accHtml.match(/<strong>([^<]+)<\/strong>\s*\(not/i);
-            if (greeting && greeting[1]) {
-              displayName = greeting[1].trim();
-              const parts = displayName.split(' ');
-              firstName = parts[0] || displayName;
-              lastName = parts.slice(1).join(' ') || '';
-            }
-          }
-        } catch (e) {
-          console.warn('Could not fetch /my-account/ profile', e);
-        }
-
-        // 2. Scrape authenticated wallet balance from /my-account/woo-wallet/
-        try {
-          const walletRes = await fetch(`${API_BASE}/my-account/woo-wallet/`, { credentials: 'include' });
-          if (walletRes.ok) {
-            const walletHtml = await walletRes.text();
-            const balMatch = walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
-                             walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i);
-            if (balMatch) {
-              const val = parseFloat(balMatch[1]);
-              if (!isNaN(val)) walletBalance = val;
-            }
-          }
-        } catch (e) {
-          console.warn('Could not fetch wallet balance', e);
-        }
-
-        const session: UserSession = {
-          isLoggedIn: true,
-          username: cleanUser,
-          displayName,
-          email,
-          phone: '',
-          firstName,
-          lastName,
-          walletBalance,
-          walletTransactions: transactions
-        };
-
-        // Save session-scoped data strictly in sessionStorage (cleared on logout)
-        sessionStorage.setItem('ssip_user_session', JSON.stringify(session));
-        sessionStorage.setItem('ssip_session_wallet', walletBalance.toString());
-        sessionStorage.setItem('ssip_session_orders', JSON.stringify(orders));
-        sessionStorage.setItem('ssip_session_txs', JSON.stringify(transactions));
-        sessionStorage.removeItem('ssip_logged_out');
-
-        return session;
-      }
-    } catch (e: any) {
-      if (e.message && !e.message.includes('fetch')) {
-        throw e;
-      }
-      console.warn('Live API attempt error or offline fallback', e);
+    } catch (err: any) {
+      throw new Error('Network error during authentication. Please check your connection.');
     }
 
-    const cleanUser = username.trim().toUpperCase();
+    const loginHtml = await loginRes.text();
 
-    // Client-side / Standalone verification for individual employee accounts
-    if (cleanUser.length >= 3 && password.length >= 3) {
-      const isSip = cleanUser.startsWith('SIP');
-      const employeeNumber = cleanUser.replace(/^SIP/i, '');
-      const displayName = isSip
-        ? `SHIMANO EMPLOYEE #${employeeNumber || cleanUser}`
-        : cleanUser;
+    // 3. Strictly verify authentication response
+    const hasErrorBlock = loginHtml.includes('woocommerce-error');
+    const hasWrongCreds = loginHtml.includes('The password you entered') ||
+                          loginHtml.includes('Unknown username') ||
+                          loginHtml.includes('is incorrect') ||
+                          loginHtml.includes('Incorrect username or password');
 
-      const employeeSession: UserSession = {
-        isLoggedIn: true,
-        username: cleanUser,
-        displayName,
-        firstName: cleanUser,
-        lastName: isSip ? `#${employeeNumber}` : '',
-        email: `${cleanUser.toLowerCase()}@shimano.com.sg`,
-        walletBalance: 100.0,
-        walletTransactions: []
-      };
-
-      sessionStorage.setItem('ssip_user_session', JSON.stringify(employeeSession));
-      sessionStorage.setItem('ssip_session_wallet', '100.00');
-      sessionStorage.setItem('ssip_session_orders', JSON.stringify([]));
-      sessionStorage.setItem('ssip_session_txs', JSON.stringify([]));
-      sessionStorage.removeItem('ssip_logged_out');
-
-      return employeeSession;
+    if (hasErrorBlock || hasWrongCreds) {
+      const errMatch = loginHtml.match(/<ul class="woocommerce-error[^>]*>([\s\S]*?)<\/ul>/i);
+      let cleanMsg = errMatch
+        ? errMatch[1].replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+        : '';
+      if (!cleanMsg || cleanMsg.length < 5) {
+        cleanMsg = 'Incorrect username or password. Please verify your staff credentials.';
+      }
+      throw new Error(cleanMsg);
     }
 
-    throw new Error('Please enter a valid employee ID and password.');
+    // Check if the page is still presenting the unauthenticated login form
+    const isStillLoginForm = loginHtml.includes('woocommerce-form-login') &&
+      !loginHtml.includes('woocommerce-MyAccount-navigation') &&
+      !loginHtml.includes('customer-logout');
+
+    if (isStillLoginForm) {
+      throw new Error('Authentication failed. Please verify your employee ID and password.');
+    }
+
+    // 4. Authentication succeeded - retrieve authentic profile data
+    let displayName = cleanUser.startsWith('SIP') ? `SHIMANO EMPLOYEE #${cleanUser.replace(/^SIP/i, '')}` : cleanUser;
+    let firstName = cleanUser;
+    let lastName = '';
+    let email = `${cleanUser.toLowerCase()}@shimano.com.sg`;
+    let walletBalance = 100.0;
+    const orders: UserOrder[] = [];
+    const transactions: WalletTransaction[] = [];
+
+    // Parse greeting from /my-account/
+    let accHtml = loginHtml;
+    if (!accHtml.includes('woocommerce-MyAccount-navigation') && !accHtml.includes('Hello')) {
+      try {
+        const accRes = await fetch(`${API_BASE}/my-account/`, { credentials: 'include' });
+        if (accRes.ok) {
+          accHtml = await accRes.text();
+        }
+      } catch (e) {
+        console.warn('Could not re-fetch /my-account/', e);
+      }
+    }
+
+    const greeting = accHtml.match(/Hello\s+<strong>([^<]+)<\/strong>/i) ||
+                     accHtml.match(/<strong>([^<]+)<\/strong>\s*\(not/i);
+    if (greeting && greeting[1]) {
+      displayName = greeting[1].trim();
+      const parts = displayName.split(' ');
+      firstName = parts[0] || displayName;
+      lastName = parts.slice(1).join(' ') || '';
+    }
+
+    // Fetch account details for full name & registered email
+    try {
+      const editRes = await fetch(`${API_BASE}/my-account/edit-account/`, { credentials: 'include' });
+      if (editRes.ok) {
+        const editHtml = await editRes.text();
+        const fnMatch = editHtml.match(/name="account_first_name"[^>]*value="([^"]*)"/i);
+        const lnMatch = editHtml.match(/name="account_last_name"[^>]*value="([^"]*)"/i);
+        const emMatch = editHtml.match(/name="account_email"[^>]*value="([^"]*)"/i);
+        if (fnMatch && fnMatch[1]) firstName = fnMatch[1].trim();
+        if (lnMatch && lnMatch[1]) lastName = lnMatch[1].trim();
+        if (emMatch && emMatch[1]) email = emMatch[1].trim();
+        if (firstName || lastName) {
+          displayName = `${firstName} ${lastName}`.trim();
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch edit-account details', e);
+    }
+
+    // Fetch live wallet balance and transaction ledger from /my-account/woo-wallet/
+    try {
+      const walletRes = await fetch(`${API_BASE}/my-account/woo-wallet/`, { credentials: 'include' });
+      if (walletRes.ok) {
+        const walletHtml = await walletRes.text();
+        const balMatch = walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
+                         walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i);
+        if (balMatch) {
+          const val = parseFloat(balMatch[1]);
+          if (!isNaN(val)) walletBalance = val;
+        }
+
+        // Parse transactions table
+        const txRows = [...walletHtml.matchAll(/<tr[^>]*class="[^"]*woocommerce-wallet-history-row[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi)];
+        for (const row of txRows) {
+          const cols = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(c => c[1].replace(/<[^>]+>/g, '').trim());
+          if (cols.length >= 4) {
+            const [id, date, amountStr, details] = cols;
+            const amountVal = parseFloat(amountStr.replace(/[^0-9.]/g, '')) || 0;
+            const isCredit = /credit/i.test(row[1]) || /credit/i.test(details);
+            transactions.push({
+              id: id || `tx-${Math.random()}`,
+              date: date || '',
+              amount: amountVal,
+              type: isCredit ? 'credit' : 'debit',
+              details: details || 'Cafeteria Transaction'
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch woo-wallet details', e);
+    }
+
+    // Fetch live orders for this user from KPOM API
+    try {
+      const kpomRes = await fetch(`${API_BASE}/wp-json/wp/v2/kpom/get-user-order-items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanUser }),
+        credentials: 'include'
+      });
+      if (kpomRes.ok) {
+        const kpomData = await kpomRes.json();
+        if (kpomData?.mealplan_order_items_data?.order_items && Array.isArray(kpomData.mealplan_order_items_data.order_items)) {
+          for (const item of kpomData.mealplan_order_items_data.order_items) {
+            orders.push({
+              id: item.order_id || Math.floor(Math.random() * 100000),
+              orderNumber: String(item.order_number || item.order_id || ''),
+              datePlaced: item.order_date || item.delivery_date || '',
+              deliveryDate: item.delivery_date || '',
+              status: item.status || 'Completed',
+              total: parseFloat(item.price || item.total || '0') || 0,
+              customerNote: item.note || '',
+              mealDate: item.delivery_date || '',
+              paymentMethod: 'Cafeteria Allowance',
+              items: [{
+                id: item.product_id || 1,
+                name: item.product_name || item.item_name || 'Meal Order',
+                price: parseFloat(item.price || '0') || 0,
+                quantity: item.quantity || 1,
+                mealDate: item.delivery_date || ''
+              }]
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch KPOM user orders', e);
+    }
+
+    // Also scrape /my-account/orders/ table if available
+    try {
+      const ordRes = await fetch(`${API_BASE}/my-account/orders/`, { credentials: 'include' });
+      if (ordRes.ok) {
+        const ordHtml = await ordRes.text();
+        const rows = [...ordHtml.matchAll(/<tr[^>]*class="[^"]*woocommerce-orders-table__row[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi)];
+        for (const r of rows) {
+          const orderNumMatch = r[1].match(/class="[^"]*woocommerce-orders-table__cell-order-number[^"]*"[^>]*>[\s\S]*?<a[^>]*>#?(\d+)<\/a>/i);
+          const dateMatch = r[1].match(/<time[^>]*datetime="([^"]*)"[^>]*>([^<]*)<\/time>/i);
+          const statusMatch = r[1].match(/class="[^"]*woocommerce-orders-table__cell-order-status[^"]*"[^>]*>([\s\S]*?)<\/td>/i);
+          const totalMatch = r[1].match(/class="[^"]*woocommerce-orders-table__cell-order-total[^"]*"[^>]*>([\s\S]*?)<\/td>/i);
+          
+          if (orderNumMatch) {
+            const orderId = parseInt(orderNumMatch[1], 10);
+            if (!orders.some(o => o.id === orderId)) {
+              const rawTotal = totalMatch ? totalMatch[1].replace(/<[^>]+>/g, '').trim() : '0';
+              const totalVal = parseFloat(rawTotal.replace(/[^0-9.]/g, '')) || 0;
+              orders.push({
+                id: orderId,
+                orderNumber: String(orderId),
+                datePlaced: dateMatch ? dateMatch[2].trim() : '',
+                deliveryDate: dateMatch ? dateMatch[2].trim() : '',
+                status: statusMatch ? statusMatch[1].replace(/<[^>]+>/g, '').trim() : 'Completed',
+                total: totalVal,
+                items: [],
+                paymentMethod: 'Cafeteria Allowance'
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch WooCommerce orders table', e);
+    }
+
+    const session: UserSession = {
+      isLoggedIn: true,
+      username: cleanUser,
+      displayName,
+      email,
+      phone: '',
+      firstName,
+      lastName,
+      walletBalance,
+      walletTransactions: transactions
+    };
+
+    // Store verified credentials strictly in sessionStorage for this session only
+    sessionStorage.setItem('ssip_user_session', JSON.stringify(session));
+    sessionStorage.setItem('ssip_session_wallet', walletBalance.toString());
+    sessionStorage.setItem('ssip_session_orders', JSON.stringify(orders));
+    sessionStorage.setItem('ssip_session_txs', JSON.stringify(transactions));
+    sessionStorage.removeItem('ssip_logged_out');
+
+    return session;
   },
 
   /**
