@@ -255,22 +255,46 @@ export function buildCycleCalendar(
   SINGAPORE_PUBLIC_HOLIDAYS.forEach((h) => holidayMap.set(h.date, h.name));
 
   // Map orders by date
+  // 1. Orders scheduled to be consumed on meal date
   const ordersByDate = new Map<string, { total: number; orderNumber: string; itemsSummary: string; status: string }>();
+  // 2. Orders placed/paid on transaction date
+  const ordersPlacedByDate = new Map<string, { total: number; count: number; orderNumbers: string[] }>();
+
   orders.forEach((o) => {
-    const iso = normalizeToIso(o.mealDate) || normalizeToIso(o.datePlaced);
-    if (iso) {
-      const existing = ordersByDate.get(iso);
+    const mealIso = normalizeToIso(o.mealDate);
+    const placedIso = normalizeToIso(o.datePlaced);
+    const targetIso = mealIso || placedIso;
+
+    if (targetIso) {
+      const existing = ordersByDate.get(targetIso);
       const total = o.total || 0;
       const itemsSummary = o.items ? o.items.map((i: any) => i.name).join(', ') : 'Lunch Set';
       if (existing) {
         existing.total += total;
         existing.itemsSummary += `; ${itemsSummary}`;
       } else {
-        ordersByDate.set(iso, {
+        ordersByDate.set(targetIso, {
           total,
           orderNumber: String(o.orderNumber || o.id || ''),
           itemsSummary,
           status: o.status || 'Confirmed'
+        });
+      }
+    }
+
+    if (placedIso) {
+      const existingPlaced = ordersPlacedByDate.get(placedIso);
+      const total = o.total || 0;
+      const numStr = String(o.orderNumber || o.id || '');
+      if (existingPlaced) {
+        existingPlaced.total += total;
+        existingPlaced.count += 1;
+        existingPlaced.orderNumbers.push(numStr);
+      } else {
+        ordersPlacedByDate.set(placedIso, {
+          total,
+          count: 1,
+          orderNumbers: [numStr]
         });
       }
     }
@@ -317,6 +341,7 @@ export function buildCycleCalendar(
     const isLeave = leaveDates.includes(iso);
     const order = ordersByDate.get(iso);
     const tx = txsByDate.get(iso);
+    const placed = ordersPlacedByDate.get(iso);
 
     let status: CycleDayStatus;
     let statusLabel: string;
@@ -333,10 +358,21 @@ export function buildCycleCalendar(
     } else if (isPassed) {
       if (order) {
         status = 'passed_claimed';
-        statusLabel = `Claimed: Pre-order #${order.orderNumber} ($${order.total.toFixed(2)})`;
+        let label = `Claimed: Pre-order #${order.orderNumber} ($${order.total.toFixed(2)})`;
+        if (placed && placed.total > 0 && !placed.orderNumbers.includes(order.orderNumber)) {
+          label += ` • Also placed ${placed.count} pre-orders ($${placed.total.toFixed(2)})`;
+        }
+        statusLabel = label;
       } else if (tx) {
         status = 'walkin_purchase';
-        statusLabel = `Direct Purchase: -$${tx.total.toFixed(2)} (Wallet Deduction)`;
+        let label = `Direct Purchase: -$${tx.total.toFixed(2)} (${tx.details || 'Wallet Deduction'})`;
+        if (placed) {
+          label += ` • Placed ${placed.count} pre-orders ($${placed.total.toFixed(2)})`;
+        }
+        statusLabel = label;
+      } else if (placed) {
+        status = 'walkin_purchase';
+        statusLabel = `Pre-order Purchase: Placed ${placed.count} meals ($${placed.total.toFixed(2)})`;
       } else {
         status = 'passed_no_order';
         statusLabel = 'Passed: No order or purchase';
@@ -348,6 +384,9 @@ export function buildCycleCalendar(
       } else if (tx) {
         status = 'walkin_purchase';
         statusLabel = `Today: Direct Purchase -$${tx.total.toFixed(2)}`;
+      } else if (placed) {
+        status = 'walkin_purchase';
+        statusLabel = `Today: Placed ${placed.count} pre-orders ($${placed.total.toFixed(2)})`;
       } else {
         status = 'today_not_ordered';
         statusLabel = 'Today: No order placed yet';
@@ -376,11 +415,14 @@ export function buildCycleCalendar(
       isWorkingDay,
       status,
       statusLabel,
-      orderTotal: order?.total,
-      orderNumber: order?.orderNumber,
-      itemsSummary: order?.itemsSummary,
-      walletTxTotal: tx?.total,
-      walletTxDetails: tx?.details
+      orderTotal: order?.total ?? placed?.total,
+      orderNumber: order?.orderNumber ?? (placed ? placed.orderNumbers.join(', ') : undefined),
+      itemsSummary: order?.itemsSummary ?? (placed ? `${placed.count} Pre-orders placed` : undefined),
+      walletTxTotal: tx?.total ?? placed?.total,
+      walletTxDetails: [
+        tx?.details,
+        placed && (!order || !placed.orderNumbers.includes(order.orderNumber)) ? `Placed ${placed.count} pre-orders ($${placed.total.toFixed(2)})` : null
+      ].filter(Boolean).join(' • ') || tx?.details
     });
 
     current.setDate(current.getDate() + 1);

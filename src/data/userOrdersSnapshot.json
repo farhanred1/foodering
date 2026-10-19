@@ -423,6 +423,34 @@
       "amount": 3.7,
       "date": "October 2, 2026",
       "details": "Source 02 Terminal 02 Canteen 02 Machine: MP 02"
+    },
+    {
+      "id": "tx-11",
+      "type": "debit",
+      "amount": 5,
+      "date": "October 1, 2026",
+      "details": "Source 02 Terminal 02 Canteen 02 Machine: MP 02"
+    },
+    {
+      "id": "tx-12",
+      "type": "debit",
+      "amount": 5,
+      "date": "September 30, 2026",
+      "details": "Source 02 Terminal 02 Canteen 02 Machine: MP 02"
+    },
+    {
+      "id": "tx-13",
+      "type": "debit",
+      "amount": 4.5,
+      "date": "September 29, 2026",
+      "details": "Source 02 Terminal 02 Canteen 02 Machine: MP 02"
+    },
+    {
+      "id": "tx-14",
+      "type": "debit",
+      "amount": 4.5,
+      "date": "September 28, 2026",
+      "details": "Source 02 Terminal 02 Canteen 02 Machine: MP 02"
     }
   ]
 }
