@@ -1,10 +1,25 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Calculator, Info, Plus, Minus, Calendar, AlertCircle, Utensils, RotateCcw, Check, Sparkles } from 'lucide-react';
+import {
+  X,
+  Calculator,
+  Info,
+  Plus,
+  Minus,
+  Calendar,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Sparkles,
+  ShoppingBag,
+  Palmtree,
+  CalendarDays
+} from 'lucide-react';
 import {
   getAllowanceCycles,
   calculateCycleWorkingDays,
   calculateAllowance,
-  normalizeToIso
+  buildCycleCalendar,
+  CycleCalendarDay
 } from '../utils/singaporeCalendar';
 import { useOrders } from '../context/OrdersContext';
 
@@ -25,8 +40,9 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
   });
 
   const [leaveDays, setLeaveDays] = useState<number>(0);
-  const [customFoodSpent, setCustomFoodSpent] = useState<number | null>(null);
+  const [leaveDates, setLeaveDates] = useState<string[]>([]);
   const [showInfo, setShowInfo] = useState<boolean>(false);
+  const [selectedDayDetail, setSelectedDayDetail] = useState<CycleCalendarDay | null>(null);
 
   const activeCycle = useMemo(() => {
     return cycles.find((c) => c.id === selectedCycleId) || cycles[0];
@@ -34,48 +50,103 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
 
   // Reset custom adjustments when switching cycles
   useEffect(() => {
-    setCustomFoodSpent(null);
     setLeaveDays(0);
+    setLeaveDates([]);
+    setSelectedDayDetail(null);
   }, [selectedCycleId]);
+
+  // Today's ISO date string
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
 
   // Working days and Singapore Public Holidays for the selected cycle
   const cycleDaysInfo = useMemo(() => {
     return calculateCycleWorkingDays(activeCycle.startDate, activeCycle.endDate);
   }, [activeCycle]);
 
-  // Orders placed in this cycle (between 27th and 26th)
-  const cycleOrders = useMemo(() => {
-    return orders.filter((o) => {
-      const iso = normalizeToIso(o.mealDate) || normalizeToIso(o.datePlaced);
-      if (!iso) return false;
-      return iso >= activeCycle.startDate && iso <= activeCycle.endDate;
+  // Build the complete calendar day array with status for each date
+  const { days: calendarDays, leadBlankDays } = useMemo(() => {
+    return buildCycleCalendar(
+      activeCycle.startDate,
+      activeCycle.endDate,
+      orders,
+      leaveDates,
+      todayStr
+    );
+  }, [activeCycle, orders, leaveDates, todayStr]);
+
+  // Summary counts from the calendar
+  const calendarStats = useMemo(() => {
+    let claimedCount = 0;
+    let upcomingOrderedCount = 0;
+    let upcomingNotOrderedCount = 0;
+    let passedNoOrderCount = 0;
+    let foodTotal = 0;
+
+    calendarDays.forEach((d) => {
+      if (d.status === 'passed_claimed') {
+        claimedCount++;
+        foodTotal += d.orderTotal || 0;
+      } else if (d.status === 'today_ordered' || d.status === 'upcoming_ordered') {
+        upcomingOrderedCount++;
+        foodTotal += d.orderTotal || 0;
+      } else if (d.status === 'upcoming_not_ordered' || d.status === 'today_not_ordered') {
+        upcomingNotOrderedCount++;
+      } else if (d.status === 'passed_no_order') {
+        passedNoOrderCount++;
+      }
     });
-  }, [orders, activeCycle]);
 
-  // Actual food total from user's orders
-  const actualCycleFoodTotal = useMemo(() => {
-    const total = cycleOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-    return parseFloat(total.toFixed(2));
-  }, [cycleOrders]);
-
-  // Effective food spent (uses user-adjusted value if modified, else actual orders)
-  const effectiveFoodSpent = customFoodSpent !== null ? customFoodSpent : actualCycleFoodTotal;
+    return {
+      claimedCount,
+      upcomingOrderedCount,
+      upcomingNotOrderedCount,
+      passedNoOrderCount,
+      totalOrderedCount: claimedCount + upcomingOrderedCount,
+      foodTotal: parseFloat(foodTotal.toFixed(2))
+    };
+  }, [calendarDays]);
 
   // Allowance calculation accounting for leave
+  const effectiveLeaveCount = Math.max(leaveDays, leaveDates.length);
   const allowanceCalc = useMemo(() => {
-    return calculateAllowance(cycleDaysInfo.workingDays, leaveDays, 100);
-  }, [cycleDaysInfo.workingDays, leaveDays]);
+    return calculateAllowance(cycleDaysInfo.workingDays, effectiveLeaveCount, 100);
+  }, [cycleDaysInfo.workingDays, effectiveLeaveCount]);
 
   // 1. Allowance left accounting for leave
   const allowanceAfterLeave = allowanceCalc.remainingAllowance;
 
   // 2. Net balance left accounting for leave AND food ordered
-  const balanceAfterFood = parseFloat((allowanceAfterLeave - effectiveFoodSpent).toFixed(2));
+  const balanceAfterFood = parseFloat((allowanceAfterLeave - calendarStats.foodTotal).toFixed(2));
+
+  // Toggle leave on calendar day tap
+  const handleToggleDayLeave = (day: CycleCalendarDay) => {
+    if (day.isWeekend || day.isHoliday) {
+      setSelectedDayDetail(day);
+      return;
+    }
+
+    setSelectedDayDetail(day);
+    if (leaveDates.includes(day.date)) {
+      const updated = leaveDates.filter((d) => d !== day.date);
+      setLeaveDates(updated);
+      setLeaveDays(updated.length);
+    } else {
+      const updated = [...leaveDates, day.date];
+      setLeaveDates(updated);
+      setLeaveDays(updated.length);
+    }
+  };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-150">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
@@ -83,20 +154,20 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
       />
 
       {/* Modal Dialog */}
-      <div className="relative bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden z-10 flex flex-col border border-slate-100 animate-in zoom-in-95 duration-150 max-h-[92vh]">
+      <div className="relative bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden z-10 flex flex-col border border-slate-100 animate-in zoom-in-95 duration-150 max-h-[94vh]">
         
         {/* Minimal Header */}
-        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
+        <div className="px-4 sm:px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
               <Calculator className="w-4 h-4" />
             </div>
             <div>
               <span className="font-extrabold text-slate-900 text-sm sm:text-base block leading-tight">
-                Allowance & Food Balance
+                Allowance & Calendar Status
               </span>
               <span className="text-[10px] text-slate-400 font-semibold">
-                Accounting for Leave & Food Ordered
+                Leave Deductions & Food Order Tracker
               </span>
             </div>
           </div>
@@ -129,9 +200,9 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto">
+        <div className="p-3.5 sm:p-5 space-y-3.5 overflow-y-auto">
           
-          {/* Collapsible Info Popover (only visible when (i) clicked) */}
+          {/* Collapsible Info Popover */}
           {showInfo && (
             <div className="p-3 bg-indigo-50/90 border border-indigo-200/80 rounded-2xl text-xs text-indigo-900 space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
               <div className="font-bold flex items-center gap-1.5 text-indigo-950">
@@ -151,190 +222,229 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
           )}
 
           {/* Cycle Selector (27th to 26th) */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Billing Cycle (27th – 26th)
-              </label>
+          <div className="flex items-center justify-between gap-2 p-1 bg-slate-100 rounded-2xl">
+            {cycles.filter((c) => !c.id.includes('2026-08')).map((c) => {
+              const isSelected = c.id === selectedCycleId;
+              const shortLabel = c.label.replace('2026', '').replace('2027', '').trim();
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSelectedCycleId(c.id)}
+                  className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer ${
+                    isSelected
+                      ? 'bg-white text-indigo-900 shadow-xs border border-slate-200/60'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <div>{shortLabel}</div>
+                  <div className="text-[10px] font-normal text-slate-400">
+                    {c.isCurrent ? 'Current Active Cycle' : 'Next Cycle'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Leave Days Stepper */}
+          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-slate-800 block">
+                Leave Days Taken
+              </span>
               <span className="text-[10px] text-slate-400">
-                {cycleDaysInfo.workingDays} working days ({allowanceCalc.dailyRateFormatted}/day)
+                Deducts {allowanceCalc.dailyRateFormatted}/day (or tap days below)
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl">
-              {cycles.filter((c) => !c.id.includes('2026-08')).map((c) => {
-                const isSelected = c.id === selectedCycleId;
-                const shortLabel = c.label.replace('2026', '').replace('2027', '').trim();
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setLeaveDays((prev) => Math.max(0, prev - 1));
+                  setLeaveDates([]);
+                }}
+                disabled={effectiveLeaveCount <= 0}
+                className="w-7 h-7 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs cursor-pointer active:scale-95"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+
+              <div className="w-10 text-center font-black text-slate-900 text-xs">
+                {effectiveLeaveCount}d
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLeaveDays((prev) => Math.min(cycleDaysInfo.workingDays, prev + 1));
+                  setLeaveDates([]);
+                }}
+                disabled={effectiveLeaveCount >= cycleDaysInfo.workingDays}
+                className="w-7 h-7 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs cursor-pointer active:scale-95"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* CALENDAR STATUS VIEW (Small Colored Calendar) */}
+          <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <CalendarDays className="w-4 h-4 text-indigo-600" />
+                <span className="text-xs font-extrabold text-slate-900">
+                  Cycle Meal Status Calendar
+                </span>
+              </div>
+              <span className="text-[11px] font-bold text-slate-600">
+                {calendarStats.totalOrderedCount} meals ordered (${calendarStats.foodTotal.toFixed(2)})
+              </span>
+            </div>
+
+            {/* 7-Day Header */}
+            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-black uppercase tracking-wider text-slate-400 pb-1 border-b border-slate-200">
+              <span>Mon</span>
+              <span>Tue</span>
+              <span>Wed</span>
+              <span>Thu</span>
+              <span>Fri</span>
+              <span className="text-slate-300">Sat</span>
+              <span className="text-slate-300">Sun</span>
+            </div>
+
+            {/* Calendar Day Grid */}
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {/* Leading blank slots */}
+              {Array.from({ length: leadBlankDays }).map((_, idx) => (
+                <div key={`blank-${idx}`} className="w-full aspect-square" />
+              ))}
+
+              {/* Cycle Days */}
+              {calendarDays.map((day) => {
+                const isSelected = selectedDayDetail?.date === day.date;
+                
+                // Color and style mapping
+                let cellClass = '';
+                let badgeIcon: React.ReactNode = null;
+
+                switch (day.status) {
+                  case 'passed_claimed':
+                    // Passed day with order claimed/completed
+                    cellClass = 'bg-emerald-600 text-white font-bold shadow-xs';
+                    badgeIcon = <CheckCircle2 className="w-2.5 h-2.5 inline text-emerald-200" />;
+                    break;
+                  case 'today_ordered':
+                    // Today with order placed
+                    cellClass = 'bg-emerald-700 text-white font-black ring-2 ring-emerald-500 shadow-sm';
+                    badgeIcon = <span className="w-1.5 h-1.5 rounded-full bg-white inline-block animate-pulse" />;
+                    break;
+                  case 'today_not_ordered':
+                    // Today without order placed
+                    cellClass = 'bg-amber-100 text-amber-900 border border-amber-300 ring-2 ring-amber-400 font-black';
+                    break;
+                  case 'upcoming_ordered':
+                    // Upcoming day with order confirmed
+                    cellClass = 'bg-brand-600 text-white font-bold shadow-xs';
+                    badgeIcon = <ShoppingBag className="w-2 h-2 inline text-brand-200" />;
+                    break;
+                  case 'upcoming_not_ordered':
+                    // Upcoming day without order
+                    cellClass = 'bg-white text-slate-700 border-2 border-dashed border-slate-300 hover:border-brand-500 font-bold';
+                    break;
+                  case 'passed_no_order':
+                    // Passed weekday without order
+                    cellClass = 'bg-slate-200/70 text-slate-400 line-through';
+                    break;
+                  case 'leave':
+                    // Day marked as leave
+                    cellClass = 'bg-purple-600 text-white font-black shadow-xs';
+                    badgeIcon = <Palmtree className="w-2.5 h-2.5 inline text-purple-200" />;
+                    break;
+                  case 'holiday':
+                    // Public holiday
+                    cellClass = 'bg-amber-100 text-amber-900 border border-amber-200 font-semibold';
+                    break;
+                  case 'weekend':
+                  default:
+                    cellClass = 'bg-slate-100/40 text-slate-300';
+                    break;
+                }
+
                 return (
                   <button
-                    key={c.id}
+                    key={day.date}
                     type="button"
-                    onClick={() => setSelectedCycleId(c.id)}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer ${
-                      isSelected
-                        ? 'bg-white text-indigo-900 shadow-xs border border-slate-200/60'
-                        : 'text-slate-600 hover:text-slate-900'
+                    onClick={() => handleToggleDayLeave(day)}
+                    className={`relative w-full aspect-square rounded-xl flex flex-col items-center justify-center text-[11px] transition-all cursor-pointer ${cellClass} ${
+                      isSelected ? 'ring-2 ring-slate-900 scale-105 z-10' : ''
                     }`}
+                    title={`${day.date}: ${day.statusLabel}`}
                   >
-                    <div>{shortLabel}</div>
-                    <div className="text-[10px] font-normal text-slate-400">
-                      {c.isCurrent ? 'Current Active Cycle' : 'Next Cycle'}
-                    </div>
+                    <span className="leading-none">{day.dayNum}</span>
+                    {badgeIcon && <span className="absolute bottom-0.5 leading-none">{badgeIcon}</span>}
                   </button>
                 );
               })}
             </div>
-          </div>
 
-          {/* Holiday Note if present in cycle */}
-          {cycleDaysInfo.publicHolidaysInCycle.length > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-[11px]">
-              <Calendar className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span>
-                Public Holiday: {cycleDaysInfo.publicHolidaysInCycle.map((h) => `${h.name} (${h.date.slice(5)})`).join(', ')}
-              </span>
-            </div>
-          )}
-
-          {/* Section 1: Leave Days Input */}
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-800 block">
-                  1. Leave Days Taken
-                </span>
-                <span className="text-[11px] text-slate-400">
-                  Deducts {allowanceCalc.dailyRateFormatted} per working day
-                </span>
-              </div>
-
-              {/* Stepper controls */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setLeaveDays((prev) => Math.max(0, prev - 1))}
-                  disabled={leaveDays <= 0}
-                  className="w-7 h-7 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs cursor-pointer active:scale-95"
-                >
-                  <Minus className="w-3 h-3" />
-                </button>
-
-                <div className="w-10 text-center font-black text-slate-900 text-sm">
-                  {leaveDays}d
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setLeaveDays((prev) => Math.min(cycleDaysInfo.workingDays, prev + 1))}
-                  disabled={leaveDays >= cycleDaysInfo.workingDays}
-                  className="w-7 h-7 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs cursor-pointer active:scale-95"
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Leave Pills */}
-            <div className="flex items-center gap-1 pt-0.5">
-              {[0, 1, 2, 3, 5].map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => setLeaveDays(d)}
-                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
-                    leaveDays === d
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-white hover:bg-slate-200/70 text-slate-600 border border-slate-200'
-                  }`}
-                >
-                  {d} {d === 1 ? 'day' : 'days'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Section 2: Food Ordered in Cycle Input */}
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-slate-800">
-                    2. Food Ordered in Cycle
+            {/* Selected Day Detail Popover / Bar */}
+            {selectedDayDetail && (
+              <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs space-y-1 animate-in fade-in duration-100">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-slate-900">
+                    {new Date(selectedDayDetail.date).toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric'
+                    })}
                   </span>
-                  {cycleOrders.length > 0 && customFoodSpent === null && (
-                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded-md">
-                      {cycleOrders.length} meals ordered
-                    </span>
-                  )}
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                    {selectedDayDetail.statusLabel}
+                  </span>
                 </div>
-                <span className="text-[11px] text-slate-400">
-                  {customFoodSpent !== null
-                    ? 'Custom simulated food spend'
-                    : `Auto-calculated from your ${cycleOrders.length} meal orders`}
-                </span>
+                {selectedDayDetail.itemsSummary && (
+                  <p className="text-[11px] text-slate-600 truncate">
+                    Menu: {selectedDayDetail.itemsSummary}
+                  </p>
+                )}
+                {selectedDayDetail.isWorkingDay && (
+                  <div className="text-[10px] text-indigo-600 font-semibold pt-0.5">
+                    {leaveDates.includes(selectedDayDetail.date)
+                      ? '✓ Marked as Leave (Click again to remove)'
+                      : 'Click to mark/unmark this day as leave'}
+                  </div>
+                )}
               </div>
+            )}
 
-              {/* Food Amount Stepper / Controls */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setCustomFoodSpent(Math.max(0, parseFloat((effectiveFoodSpent - 1).toFixed(2))))}
-                  disabled={effectiveFoodSpent <= 0}
-                  className="w-7 h-7 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs cursor-pointer active:scale-95"
-                  title="Minus $1"
-                >
-                  <Minus className="w-3 h-3" />
-                </button>
-
-                <div className="min-w-16 text-center font-black text-slate-900 text-sm">
-                  ${effectiveFoodSpent.toFixed(2)}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setCustomFoodSpent(parseFloat((effectiveFoodSpent + 1).toFixed(2)))}
-                  className="w-7 h-7 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-slate-700 hover:bg-slate-100 transition-all shadow-xs cursor-pointer active:scale-95"
-                  title="Plus $1"
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-
-            {/* Quick spend pills & Reset */}
-            <div className="flex items-center justify-between pt-0.5 text-[10px]">
+            {/* Calendar Legend Bar */}
+            <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center justify-between gap-1.5 text-[10px] text-slate-600 font-medium">
               <div className="flex items-center gap-1">
-                {[0, 15, 25, 35, 50].map((amt) => (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => setCustomFoodSpent(amt)}
-                    className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
-                      effectiveFoodSpent === amt
-                        ? 'bg-emerald-700 text-white shadow-xs'
-                        : 'bg-white hover:bg-slate-200/70 text-slate-600 border border-slate-200'
-                    }`}
-                  >
-                    ${amt}
-                  </button>
-                ))}
+                <span className="w-2.5 h-2.5 rounded-md bg-emerald-600 inline-block shrink-0" />
+                <span>Claimed ({calendarStats.claimedCount})</span>
               </div>
-
-              {customFoodSpent !== null && (
-                <button
-                  type="button"
-                  onClick={() => setCustomFoodSpent(null)}
-                  className="flex items-center gap-1 text-brand-600 hover:text-brand-800 font-bold cursor-pointer"
-                >
-                  <RotateCcw className="w-2.5 h-2.5" />
-                  <span>Reset to Actual (${actualCycleFoodTotal.toFixed(2)})</span>
-                </button>
-              )}
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-md bg-brand-600 inline-block shrink-0" />
+                <span>Pre-ordered ({calendarStats.upcomingOrderedCount})</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-md bg-white border border-dashed border-slate-400 inline-block shrink-0" />
+                <span>Not Placed ({calendarStats.upcomingNotOrderedCount})</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-md bg-purple-600 inline-block shrink-0" />
+                <span>Leave ({leaveDates.length})</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-md bg-slate-200 inline-block shrink-0" />
+                <span>Passed No Order ({calendarStats.passedNoOrderCount})</span>
+              </div>
             </div>
           </div>
 
           {/* TWO PRIMARY RESULTS CARDS */}
-          <div className="space-y-2.5 pt-1">
+          <div className="space-y-2 pt-0.5">
             
             {/* 1. ALLOWANCE LEFT ACCOUNTING FOR LEAVE */}
             <div className="p-3.5 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl shadow-sm border border-slate-800">
@@ -352,8 +462,8 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
                   {allowanceCalc.remainingAllowanceFormatted}
                 </div>
                 <div className="text-right text-[11px] text-indigo-200">
-                  {leaveDays > 0 ? (
-                    <span>$100.00 − {allowanceCalc.leaveDeductionFormatted} ({leaveDays}d leave)</span>
+                  {effectiveLeaveCount > 0 ? (
+                    <span>$100.00 − {allowanceCalc.leaveDeductionFormatted} ({effectiveLeaveCount}d leave)</span>
                   ) : (
                     <span className="text-emerald-400 font-semibold">Full $100.00 allowance (0d leave)</span>
                   )}
@@ -362,7 +472,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
             </div>
 
             {/* 2. NET BALANCE LEFT ACCOUNTING FOR FOOD ORDERED */}
-            <div className={`p-4 rounded-2xl shadow-md border ${
+            <div className={`p-3.5 sm:p-4 rounded-2xl shadow-md border ${
               balanceAfterFood >= 0
                 ? 'bg-gradient-to-br from-emerald-950 via-slate-900 to-teal-950 border-emerald-500/30 text-white'
                 : 'bg-gradient-to-br from-rose-950 via-slate-900 to-red-950 border-rose-500/30 text-white'
@@ -399,7 +509,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
                     Allowance: <span className="font-bold text-white">${allowanceAfterLeave.toFixed(2)}</span>
                   </div>
                   <div className="text-rose-300 text-[11px]">
-                    Food: <span className="font-bold text-rose-300">-${effectiveFoodSpent.toFixed(2)}</span>
+                    Food: <span className="font-bold text-rose-300">-${calendarStats.foodTotal.toFixed(2)}</span>
                   </div>
                 </div>
               </div>

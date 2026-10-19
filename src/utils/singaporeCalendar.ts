@@ -197,3 +197,165 @@ export function normalizeToIso(dateStr?: string): string {
   }
   return '';
 }
+
+export type CycleDayStatus =
+  | 'weekend'
+  | 'holiday'
+  | 'leave'
+  | 'passed_claimed'
+  | 'passed_no_order'
+  | 'today_ordered'
+  | 'today_not_ordered'
+  | 'upcoming_ordered'
+  | 'upcoming_not_ordered';
+
+export interface CycleCalendarDay {
+  date: string; // YYYY-MM-DD
+  dayNum: number;
+  dayOfWeek: number; // 0 = Sun, 1 = Mon ... 6 = Sat
+  isWeekend: boolean;
+  isHoliday: boolean;
+  holidayName?: string;
+  isToday: boolean;
+  isPassed: boolean;
+  isUpcoming: boolean;
+  isWorkingDay: boolean;
+  status: CycleDayStatus;
+  statusLabel: string;
+  orderTotal?: number;
+  orderNumber?: string;
+  itemsSummary?: string;
+}
+
+export function buildCycleCalendar(
+  startDateStr: string,
+  endDateStr: string,
+  orders: { mealDate?: string; datePlaced?: string; total?: number; status?: string; items?: any[]; orderNumber?: string; id?: any }[],
+  leaveDates: string[] = [],
+  todayStr: string = (() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  })()
+): { days: CycleCalendarDay[]; leadBlankDays: number } {
+  const [sy, sm, sd] = startDateStr.split('-').map(Number);
+  const [ey, em, ed] = endDateStr.split('-').map(Number);
+
+  const start = new Date(sy, sm - 1, sd);
+  const end = new Date(ey, em - 1, ed);
+
+  // Map public holidays
+  const holidayMap = new Map<string, string>();
+  SINGAPORE_PUBLIC_HOLIDAYS.forEach((h) => holidayMap.set(h.date, h.name));
+
+  // Map orders by date
+  const ordersByDate = new Map<string, { total: number; orderNumber: string; itemsSummary: string; status: string }>();
+  orders.forEach((o) => {
+    const iso = normalizeToIso(o.mealDate) || normalizeToIso(o.datePlaced);
+    if (iso) {
+      const existing = ordersByDate.get(iso);
+      const total = o.total || 0;
+      const itemsSummary = o.items ? o.items.map((i: any) => i.name).join(', ') : 'Lunch Set';
+      if (existing) {
+        existing.total += total;
+        existing.itemsSummary += `; ${itemsSummary}`;
+      } else {
+        ordersByDate.set(iso, {
+          total,
+          orderNumber: String(o.orderNumber || o.id || ''),
+          itemsSummary,
+          status: o.status || 'Confirmed'
+        });
+      }
+    }
+  });
+
+  const days: CycleCalendarDay[] = [];
+  const current = new Date(start);
+
+  while (current <= end) {
+    const dayOfWeek = current.getDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
+    const yyyy = current.getFullYear();
+    const mm = String(current.getMonth() + 1).padStart(2, '0');
+    const dd = String(current.getDate()).padStart(2, '0');
+    const iso = `${yyyy}-${mm}-${dd}`;
+    const dayNum = current.getDate();
+
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const isHoliday = holidayMap.has(iso);
+    const holidayName = holidayMap.get(iso);
+    const isWorkingDay = !isWeekend && !isHoliday;
+    const isToday = iso === todayStr;
+    const isPassed = iso < todayStr;
+    const isUpcoming = iso > todayStr;
+    const isLeave = leaveDates.includes(iso);
+    const order = ordersByDate.get(iso);
+
+    let status: CycleDayStatus;
+    let statusLabel: string;
+
+    if (isLeave && isWorkingDay) {
+      status = 'leave';
+      statusLabel = 'Leave Day (Subsidized deducted)';
+    } else if (isWeekend) {
+      status = 'weekend';
+      statusLabel = 'Weekend (Non-working day)';
+    } else if (isHoliday) {
+      status = 'holiday';
+      statusLabel = `Public Holiday: ${holidayName}`;
+    } else if (isPassed) {
+      if (order) {
+        status = 'passed_claimed';
+        statusLabel = `Claimed: Order #${order.orderNumber} ($${order.total.toFixed(2)})`;
+      } else {
+        status = 'passed_no_order';
+        statusLabel = 'Passed: No order placed';
+      }
+    } else if (isToday) {
+      if (order) {
+        status = 'today_ordered';
+        statusLabel = `Today: Ordered #${order.orderNumber} ($${order.total.toFixed(2)})`;
+      } else {
+        status = 'today_not_ordered';
+        statusLabel = 'Today: No order placed yet';
+      }
+    } else {
+      // isUpcoming
+      if (order) {
+        status = 'upcoming_ordered';
+        statusLabel = `Pre-ordered: Order #${order.orderNumber} ($${order.total.toFixed(2)})`;
+      } else {
+        status = 'upcoming_not_ordered';
+        statusLabel = 'Upcoming: Not ordered yet';
+      }
+    }
+
+    days.push({
+      date: iso,
+      dayNum,
+      dayOfWeek,
+      isWeekend,
+      isHoliday,
+      holidayName,
+      isToday,
+      isPassed,
+      isUpcoming,
+      isWorkingDay,
+      status,
+      statusLabel,
+      orderTotal: order?.total,
+      orderNumber: order?.orderNumber,
+      itemsSummary: order?.itemsSummary
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  // Calculate leading blank days for Monday-start calendar
+  const startDayOfWeek = start.getDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
+  const leadBlankDays = (startDayOfWeek + 6) % 7;
+
+  return { days, leadBlankDays };
+}
