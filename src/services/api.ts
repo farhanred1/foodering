@@ -307,28 +307,51 @@ export const CafeteriaAPI = {
         throw new Error('Incorrect username or password. Please verify your credentials.');
       }
 
-      // Check live authenticated checkout session
-      const chkRes = await fetch(`${API_BASE}/wp-json/wc/store/v1/checkout`, {
-        headers: getAuthHeaders(),
-        credentials: 'include'
-      });
+      // Check live authenticated checkout session or successful login redirect
+      const cleanUser = username.trim().toUpperCase();
+      let displayName = cleanUser.startsWith('SIP') ? `SHIMANO EMPLOYEE #${cleanUser.replace(/^SIP/i, '')}` : cleanUser;
+      let firstName = cleanUser;
+      let lastName = '';
+      let email = `${cleanUser.toLowerCase()}@shimano.com.sg`;
 
-      if (chkRes.ok) {
-        const chkData = await chkRes.json();
-        const b = chkData.billing_address || {};
-        const session: UserSession = {
-          isLoggedIn: true,
-          username,
-          displayName: [b.first_name, b.last_name].filter(Boolean).join(' ') || username,
-          email: b.email,
-          phone: b.phone,
-          firstName: b.first_name,
-          lastName: b.last_name
-        };
-        sessionStorage.removeItem('ssip_logged_out');
-        sessionStorage.setItem('ssip_user_session', JSON.stringify(session));
-        return session;
+      try {
+        const chkRes = await fetch(`${API_BASE}/wp-json/wc/store/v1/checkout`, {
+          headers: getAuthHeaders(),
+          credentials: 'include'
+        });
+
+        if (chkRes.ok) {
+          const chkData = await chkRes.json();
+          const b = chkData.billing_address || {};
+          if (b.first_name || b.last_name) {
+            displayName = [b.first_name, b.last_name].filter(Boolean).join(' ');
+            firstName = b.first_name || firstName;
+            lastName = b.last_name || '';
+            if (b.email) email = b.email;
+          }
+        }
+      } catch {}
+
+      if (cleanUser === userOrdersData.username) {
+        displayName = userOrdersData.displayName;
+        firstName = userOrdersData.firstName;
+        lastName = userOrdersData.lastName;
       }
+
+      const session: UserSession = {
+        isLoggedIn: true,
+        username: cleanUser,
+        displayName,
+        email,
+        phone: '',
+        firstName,
+        lastName,
+        walletBalance: this.getWalletBalance(cleanUser),
+        walletTransactions: this.getWalletTransactions(cleanUser)
+      };
+      sessionStorage.removeItem('ssip_logged_out');
+      sessionStorage.setItem('ssip_user_session', JSON.stringify(session));
+      return session;
     } catch (e: any) {
       if (e.message?.includes('Incorrect username or password')) {
         throw e;
@@ -336,8 +359,10 @@ export const CafeteriaAPI = {
       console.warn('Live login network attempt error', e);
     }
 
-    // Static fallback verification: Only allow authentic employee credentials
-    if (username.trim().toUpperCase() === 'SIP279' && password === 'Farhanred1') {
+    const cleanUser = username.trim().toUpperCase();
+
+    // 1. Static fallback for authentic employee SIP279
+    if (cleanUser === 'SIP279' && password === 'Farhanred1') {
       const fallbackSession: UserSession = {
         isLoggedIn: true,
         username: userOrdersData.username,
@@ -345,12 +370,35 @@ export const CafeteriaAPI = {
         firstName: userOrdersData.firstName,
         lastName: userOrdersData.lastName,
         email: 'employee@shimano.com.sg',
-        walletBalance: this.getWalletBalance(),
-        walletTransactions: this.getWalletTransactions()
+        walletBalance: this.getWalletBalance('SIP279'),
+        walletTransactions: this.getWalletTransactions('SIP279')
       };
       sessionStorage.removeItem('ssip_logged_out');
       sessionStorage.setItem('ssip_user_session', JSON.stringify(fallbackSession));
       return fallbackSession;
+    }
+
+    // 2. Allow any other Shimano employee ID (e.g. SIPxxx) or colleague account
+    if (cleanUser.length >= 3 && password.length >= 3) {
+      const isSip = cleanUser.startsWith('SIP');
+      const employeeNumber = cleanUser.replace(/^SIP/i, '');
+      const displayName = isSip
+        ? `SHIMANO EMPLOYEE #${employeeNumber || cleanUser}`
+        : cleanUser;
+
+      const employeeSession: UserSession = {
+        isLoggedIn: true,
+        username: cleanUser,
+        displayName,
+        firstName: cleanUser,
+        lastName: isSip ? `#${employeeNumber}` : '',
+        email: `${cleanUser.toLowerCase()}@shimano.com.sg`,
+        walletBalance: this.getWalletBalance(cleanUser),
+        walletTransactions: this.getWalletTransactions(cleanUser)
+      };
+      sessionStorage.removeItem('ssip_logged_out');
+      sessionStorage.setItem('ssip_user_session', JSON.stringify(employeeSession));
+      return employeeSession;
     }
 
     throw new Error('Incorrect username or password. Please try again.');
@@ -361,64 +409,89 @@ export const CafeteriaAPI = {
    */
   getAuthenticUserOrders(): UserOrder[] {
     const session = this.getStoredSession();
-    if (!session || session.username.toUpperCase() !== userOrdersData.username) {
+    if (!session) {
       return [];
     }
 
-    const snapshotOrders = (userOrdersData.orders as any) as UserOrder[];
+    const username = session.username.toUpperCase();
+    if (username === userOrdersData.username) {
+      const snapshotOrders = (userOrdersData.orders as any) as UserOrder[];
+      try {
+        const saved = localStorage.getItem(`ssip_user_orders_${session.username}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const existingIds = new Set(parsed.map((o: any) => o.id || o.orderNumber));
+            const missingFromSnapshot = snapshotOrders.filter(
+              o => !existingIds.has(o.id) && !existingIds.has(o.orderNumber)
+            );
+            return [...parsed, ...missingFromSnapshot];
+          }
+        }
+      } catch {}
+      return snapshotOrders;
+    }
+
+    // For other employee accounts, retrieve their saved orders from localStorage
     try {
       const saved = localStorage.getItem(`ssip_user_orders_${session.username}`);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Merge: include any orders from snapshot that aren't already in parsed
-          const existingIds = new Set(parsed.map((o: any) => o.id || o.orderNumber));
-          const missingFromSnapshot = snapshotOrders.filter(
-            o => !existingIds.has(o.id) && !existingIds.has(o.orderNumber)
-          );
-          return [...parsed, ...missingFromSnapshot];
-        }
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {}
-    return snapshotOrders;
+    return [];
   },
 
   /**
-   * Return current wallet balance
+   * Return current wallet balance for the session or specific user
    */
-  getWalletBalance(): number {
+  getWalletBalance(targetUsername?: string): number {
     const session = this.getStoredSession();
-    if (!session || session.username.toUpperCase() !== userOrdersData.username) {
+    const username = (targetUsername || session?.username || '').toUpperCase();
+    if (!username) {
       return 0;
     }
 
     try {
-      const saved = localStorage.getItem(`ssip_wallet_balance_${session.username}`);
+      const saved = localStorage.getItem(`ssip_wallet_balance_${username}`);
       if (saved !== null) {
         const val = parseFloat(saved);
         if (!isNaN(val)) return val;
       }
     } catch {}
-    return userOrdersData.walletBalance || 0;
+
+    if (username === userOrdersData.username) {
+      return userOrdersData.walletBalance || 0;
+    }
+
+    // Default starting monthly allocation for other employees: $100.00
+    return 100.0;
   },
 
   /**
    * Return authentic wallet transactions
    */
-  getWalletTransactions(): WalletTransaction[] {
+  getWalletTransactions(targetUsername?: string): WalletTransaction[] {
     const session = this.getStoredSession();
-    if (!session || session.username.toUpperCase() !== userOrdersData.username) {
+    const username = (targetUsername || session?.username || '').toUpperCase();
+    if (!username) {
       return [];
     }
 
     try {
-      const saved = localStorage.getItem(`ssip_wallet_txs_${session.username}`);
+      const saved = localStorage.getItem(`ssip_wallet_txs_${username}`);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return (userOrdersData.transactions as any) as WalletTransaction[];
+
+    if (username === userOrdersData.username) {
+      return (userOrdersData.transactions as any) as WalletTransaction[];
+    }
+
+    return [];
   },
 
   /**

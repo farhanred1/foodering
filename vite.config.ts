@@ -12,11 +12,21 @@ export default defineConfig({
         target: 'https://ssip-cafeteria.whew.life',
         changeOrigin: true,
         secure: false,
-        cookieDomainRewrite: 'localhost',
+        cookieDomainRewrite: {
+          '*': ''
+        },
+        cookiePathRewrite: {
+          '*': '/'
+        },
         rewrite: (path) => path.replace(/^\/api/, ''),
         configure: (proxy, _options) => {
           proxy.on('proxyRes', (proxyRes, req, res) => {
             res.setHeader('Access-Control-Expose-Headers', 'Nonce, Cart-Token, *');
+            if (proxyRes.headers['set-cookie']) {
+              proxyRes.headers['set-cookie'] = proxyRes.headers['set-cookie'].map(cookie =>
+                cookie.replace(/;\s*secure/gi, '')
+              );
+            }
           });
         }
       }
