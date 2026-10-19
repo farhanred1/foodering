@@ -303,7 +303,9 @@ export const CafeteriaAPI = {
         loginHtml.includes('Lost your password');
 
       if (isError) {
-        throw new Error('Incorrect username or password. Please verify your credentials.');
+        const errMatch = loginHtml.match(/<ul class="woocommerce-error"[^>]*>([\s\S]*?)<\/ul>/i);
+        const cleanMsg = errMatch ? errMatch[1].replace(/<[^>]+>/g, '').trim() : 'Incorrect username or password. Please verify your credentials.';
+        throw new Error(cleanMsg);
       }
 
       if (loginRes.ok) {
@@ -312,24 +314,43 @@ export const CafeteriaAPI = {
         let firstName = cleanUser;
         let lastName = '';
         let email = `${cleanUser.toLowerCase()}@shimano.com.sg`;
+        let walletBalance = 100.0;
+        const orders: UserOrder[] = [];
+        const transactions: WalletTransaction[] = [];
 
+        // 1. Scrape authenticated profile name from /my-account/
         try {
-          const chkRes = await fetch(`${API_BASE}/wp-json/wc/store/v1/checkout`, {
-            headers: getAuthHeaders(),
-            credentials: 'include'
-          });
-
-          if (chkRes.ok) {
-            const chkData = await chkRes.json();
-            const b = chkData.billing_address || {};
-            if (b.first_name || b.last_name) {
-              displayName = [b.first_name, b.last_name].filter(Boolean).join(' ');
-              firstName = b.first_name || firstName;
-              lastName = b.last_name || '';
-              if (b.email) email = b.email;
+          const accRes = await fetch(`${API_BASE}/my-account/`, { credentials: 'include' });
+          if (accRes.ok) {
+            const accHtml = await accRes.text();
+            const greeting = accHtml.match(/Hello\s+<strong>([^<]+)<\/strong>/i) ||
+                             accHtml.match(/<strong>([^<]+)<\/strong>\s*\(not/i);
+            if (greeting && greeting[1]) {
+              displayName = greeting[1].trim();
+              const parts = displayName.split(' ');
+              firstName = parts[0] || displayName;
+              lastName = parts.slice(1).join(' ') || '';
             }
           }
-        } catch {}
+        } catch (e) {
+          console.warn('Could not fetch /my-account/ profile', e);
+        }
+
+        // 2. Scrape authenticated wallet balance from /my-account/woo-wallet/
+        try {
+          const walletRes = await fetch(`${API_BASE}/my-account/woo-wallet/`, { credentials: 'include' });
+          if (walletRes.ok) {
+            const walletHtml = await walletRes.text();
+            const balMatch = walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
+                             walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i);
+            if (balMatch) {
+              const val = parseFloat(balMatch[1]);
+              if (!isNaN(val)) walletBalance = val;
+            }
+          }
+        } catch (e) {
+          console.warn('Could not fetch wallet balance', e);
+        }
 
         const session: UserSession = {
           isLoggedIn: true,
@@ -339,18 +360,24 @@ export const CafeteriaAPI = {
           phone: '',
           firstName,
           lastName,
-          walletBalance: this.getWalletBalance(cleanUser),
-          walletTransactions: this.getWalletTransactions(cleanUser)
+          walletBalance,
+          walletTransactions: transactions
         };
-        sessionStorage.removeItem('ssip_logged_out');
+
+        // Save session-scoped data strictly in sessionStorage (cleared on logout)
         sessionStorage.setItem('ssip_user_session', JSON.stringify(session));
+        sessionStorage.setItem('ssip_session_wallet', walletBalance.toString());
+        sessionStorage.setItem('ssip_session_orders', JSON.stringify(orders));
+        sessionStorage.setItem('ssip_session_txs', JSON.stringify(transactions));
+        sessionStorage.removeItem('ssip_logged_out');
+
         return session;
       }
     } catch (e: any) {
-      if (e.message?.includes('Incorrect username or password')) {
+      if (e.message && !e.message.includes('fetch')) {
         throw e;
       }
-      console.warn('Live login network attempt error', e);
+      console.warn('Live API attempt error or offline fallback', e);
     }
 
     const cleanUser = username.trim().toUpperCase();
@@ -370,11 +397,16 @@ export const CafeteriaAPI = {
         firstName: cleanUser,
         lastName: isSip ? `#${employeeNumber}` : '',
         email: `${cleanUser.toLowerCase()}@shimano.com.sg`,
-        walletBalance: this.getWalletBalance(cleanUser),
-        walletTransactions: this.getWalletTransactions(cleanUser)
+        walletBalance: 100.0,
+        walletTransactions: []
       };
-      sessionStorage.removeItem('ssip_logged_out');
+
       sessionStorage.setItem('ssip_user_session', JSON.stringify(employeeSession));
+      sessionStorage.setItem('ssip_session_wallet', '100.00');
+      sessionStorage.setItem('ssip_session_orders', JSON.stringify([]));
+      sessionStorage.setItem('ssip_session_txs', JSON.stringify([]));
+      sessionStorage.removeItem('ssip_logged_out');
+
       return employeeSession;
     }
 
@@ -382,7 +414,7 @@ export const CafeteriaAPI = {
   },
 
   /**
-   * Return past user orders for the currently active individual account
+   * Return past user orders for the currently active individual account (session-scoped)
    */
   getAuthenticUserOrders(): UserOrder[] {
     const session = this.getStoredSession();
@@ -391,7 +423,7 @@ export const CafeteriaAPI = {
     }
 
     try {
-      const saved = localStorage.getItem(`ssip_user_orders_${session.username}`);
+      const saved = sessionStorage.getItem('ssip_session_orders');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed;
@@ -401,62 +433,57 @@ export const CafeteriaAPI = {
   },
 
   /**
-   * Return current wallet balance for the session or specific user
+   * Return current wallet balance for the active session
    * Default starting monthly cycle allowance for any employee is $100.00
    */
-  getWalletBalance(targetUsername?: string): number {
+  getWalletBalance(): number {
     const session = this.getStoredSession();
-    const username = (targetUsername || session?.username || '').toUpperCase();
-    if (!username) {
+    if (!session) {
       return 0;
     }
 
     try {
-      const saved = localStorage.getItem(`ssip_wallet_balance_${username}`);
+      const saved = sessionStorage.getItem('ssip_session_wallet');
       if (saved !== null) {
         const val = parseFloat(saved);
         if (!isNaN(val)) return val;
       }
     } catch {}
 
-    // Default starting monthly allocation for each employee: $100.00
-    return 100.0;
+    return session.walletBalance || 100.0;
   },
 
   /**
-   * Return authentic wallet transactions for the active individual account
+   * Return wallet transactions for the active session
    */
-  getWalletTransactions(targetUsername?: string): WalletTransaction[] {
+  getWalletTransactions(): WalletTransaction[] {
     const session = this.getStoredSession();
-    const username = (targetUsername || session?.username || '').toUpperCase();
-    if (!username) {
+    if (!session) {
       return [];
     }
 
     try {
-      const saved = localStorage.getItem(`ssip_wallet_txs_${username}`);
+      const saved = sessionStorage.getItem('ssip_session_txs');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed;
       }
     } catch {}
 
-    return [];
+    return session.walletTransactions || [];
   },
 
   /**
-   * Deduct amount from wallet balance upon cafeteria order for the active user
+   * Deduct amount from wallet balance upon cafeteria order for the active session
    */
   deductWallet(amount: number, details?: string): number {
-    const session = this.getStoredSession();
-    const username = session?.username || 'EMPLOYEE';
-    const current = this.getWalletBalance(username);
+    const current = this.getWalletBalance();
     const updated = Math.max(0, parseFloat((current - amount).toFixed(2)));
 
-    // Save strictly to user-specific storage keys
-    localStorage.setItem(`ssip_wallet_balance_${username}`, updated.toString());
+    // Save strictly to session-scoped storage
+    sessionStorage.setItem('ssip_session_wallet', updated.toString());
 
-    const txs = this.getWalletTransactions(username);
+    const txs = this.getWalletTransactions();
     const newTx: WalletTransaction = {
       id: `tx-${Date.now()}`,
       type: 'debit',
@@ -465,7 +492,7 @@ export const CafeteriaAPI = {
       details: details || 'Cafeteria Machine Terminal 02'
     };
     const updatedTxs = [newTx, ...txs];
-    localStorage.setItem(`ssip_wallet_txs_${username}`, JSON.stringify(updatedTxs));
+    sessionStorage.setItem('ssip_session_txs', JSON.stringify(updatedTxs));
     return updated;
   },
 
@@ -478,15 +505,18 @@ export const CafeteriaAPI = {
       if (raw) return JSON.parse(raw);
     } catch {}
 
-    // No auto-login by default; require user to authenticate first
     return null;
   },
 
   logout(): void {
+    // Clear all session storage completely so zero data remains
+    sessionStorage.clear();
     sessionStorage.setItem('ssip_logged_out', 'true');
-    sessionStorage.removeItem('ssip_user_session');
-    sessionStorage.removeItem('ssip_nonce');
-    sessionStorage.removeItem('ssip_cart_token');
+
+    // Trigger backend logout
+    try {
+      fetch(`${API_BASE}/wp-login.php?action=logout`, { credentials: 'include' }).catch(() => {});
+    } catch {}
   },
 
   parseWooCart(data: any): WooCart {

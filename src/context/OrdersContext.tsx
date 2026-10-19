@@ -57,7 +57,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     if (!user) return;
     try {
-      localStorage.setItem(`ssip_user_orders_${user.username}`, JSON.stringify(orders));
+      sessionStorage.setItem('ssip_session_orders', JSON.stringify(orders));
     } catch (e) {
       console.error('Failed to save order history', e);
     }
@@ -85,7 +85,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const clearOrders = () => {
     setOrders([]);
-    localStorage.removeItem('ssip_user_orders');
+    sessionStorage.removeItem('ssip_session_orders');
   };
 
   const openWithTab = (tab: 'orders' | 'wallet') => {
