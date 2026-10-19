@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Product } from '../types/cafeteria';
 import { useCart } from '../context/CartContext';
-import { Plus, Minus, Check, UtensilsCrossed, Soup, Utensils, Coffee } from 'lucide-react';
+import { useOrders } from '../context/OrdersContext';
+import { Plus, Minus, Check, UtensilsCrossed, Soup, Utensils, Coffee, Clock } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
@@ -9,8 +10,24 @@ interface ProductCardProps {
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const { cart, addToCart, updateQuantity } = useCart();
+  const { orders } = useOrders();
   const [imageError, setImageError] = useState(false);
   const [addedAnim, setAddedAnim] = useState(false);
+
+  // Check if there is an existing order placed for this item and date
+  const existingOrder = orders.find(order => {
+    // Check if the order mealDate matches or date matches
+    const dateMatch = !order.mealDate || !product.date || order.mealDate === product.date;
+    const itemMatch = order.items.some(item => {
+      if (item.id === product.id) return true;
+      const cleanOrderName = item.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const cleanProdName = product.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const cleanDispName = (product.displayName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return cleanOrderName.includes(cleanProdName) || cleanProdName.includes(cleanOrderName) ||
+             (cleanDispName && cleanOrderName.includes(cleanDispName));
+    });
+    return dateMatch && itemMatch;
+  });
 
   const cartItem = cart.items.find(i => i.id === product.id);
   const quantity = cartItem ? cartItem.quantity : 0;
@@ -129,10 +146,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
       {/* Content */}
       <div className="p-0 sm:p-4 flex-1 min-w-0 flex flex-col justify-between self-stretch">
         <div>
-          <div className="flex items-center gap-1.5 sm:hidden mb-0.5">
-            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md ${visuals.badgeBg} ${visuals.badgeText}`}>
+          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md sm:hidden ${visuals.badgeBg} ${visuals.badgeText}`}>
               {visuals.label}
             </span>
+
+            {/* If there is an existing order placed for this item, show order status badge */}
+            {existingOrder && (
+              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">
+                <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-600" />
+                <span>Ordered ({existingOrder.status})</span>
+              </span>
+            )}
           </div>
 
           <h3 className="font-bold sm:font-extrabold text-slate-900 text-xs sm:text-base leading-snug line-clamp-2 group-hover:text-brand-700 transition-colors uppercase">
