@@ -148,11 +148,11 @@ export const OrdersModal: React.FC = () => {
                   Cafeteria Wallet & Orders
                 </h3>
                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                  {user?.username || 'SIP279'}
+                  {user?.username || 'Employee'}
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                {user?.displayName || 'FARHAN REDUAN AHAMMED #2313'}
+                {user?.displayName || user?.username || 'Employee'}
               </p>
             </div>
           </div>
@@ -203,12 +203,12 @@ export const OrdersModal: React.FC = () => {
             <div className="mt-4 pt-4 border-t border-white/15 flex items-center justify-between text-xs text-emerald-100">
               <div>
                 <span className="text-white/60 block text-[10px] uppercase font-bold">Account ID</span>
-                <span className="font-bold text-white tracking-wide">{user?.username || 'SIP279'}</span>
+                <span className="font-bold text-white tracking-wide">{user?.username || 'Employee'}</span>
               </div>
               <div className="text-right">
                 <span className="text-white/60 block text-[10px] uppercase font-bold">Employee</span>
                 <span className="font-bold text-white truncate max-w-[190px] block">
-                  {user?.displayName || 'FARHAN REDUAN AHAMMED'}
+                  {user?.displayName || user?.username || 'Employee'}
                 </span>
               </div>
             </div>

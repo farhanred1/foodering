@@ -71,7 +71,7 @@ export const LoginPage: React.FC = () => {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. SIP279"
+                placeholder="Enter your Employee ID or Username"
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-500 focus:bg-white focus:ring-4 focus:ring-brand-500/10 transition-all font-medium text-slate-900"
               />
             </div>
