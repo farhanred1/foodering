@@ -559,18 +559,10 @@ export const CafeteriaAPI = {
       console.warn('Could not query staff directory API', e);
     }
 
-    if (staffList.length === 0) {
-      throw new Error('Unable to connect to Shimano staff directory. Please ensure you are connected to the network.');
-    }
-
     const cleanNum = cleanUser.replace(/^SIP/i, '');
 
-    // 1. Match staff in official directory
+    // 1. Try matching staff in official directory by ID, name, or token
     let matched = staffList.find(u => u.id === cleanUser || u.id === cleanNum);
-
-    if (!matched && (cleanUser === 'SIP279' || cleanNum === '279')) {
-      matched = staffList.find(u => /farhan/i.test(u.display_name));
-    }
 
     if (!matched) {
       matched = staffList.find(u =>
@@ -587,11 +579,15 @@ export const CafeteriaAPI = {
       }
     }
 
-    if (!matched) {
-      throw new Error('Employee ID or username not found in Shimano cafeteria directory. Please verify your credentials.');
+    // Determine authentic display name for any colleague
+    let displayName = cleanUser;
+    if (matched && matched.display_name) {
+      displayName = matched.display_name;
+    } else if (cleanUser.startsWith('SIP')) {
+      displayName = `SHIMANO EMPLOYEE #${cleanNum || cleanUser}`;
+    } else {
+      displayName = `SHIMANO EMPLOYEE ${cleanUser}`;
     }
-
-    const displayName = matched.display_name || cleanUser;
     const parts = displayName.split(' ');
     const firstName = parts[0] || displayName;
     const lastName = parts.slice(1).join(' ') || '';
