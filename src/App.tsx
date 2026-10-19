@@ -8,9 +8,10 @@ import { OrderSuccessModal } from './components/OrderSuccessModal';
 import { LoginModal } from './components/LoginModal';
 import { LoginPage } from './components/LoginPage';
 import { OrdersModal } from './components/OrdersModal';
+import { AllowanceCalculatorModal } from './components/AllowanceCalculatorModal';
 import { CafeteriaAPI } from './services/api';
 import { Shop, DailySchedule, CheckoutResult } from './types/cafeteria';
-import { ArrowUp, Calendar, Wallet } from 'lucide-react';
+import { ArrowUp, Calendar, Wallet, Calculator } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useOrders } from './context/OrdersContext';
 
@@ -24,6 +25,7 @@ export const App: React.FC = () => {
 
   // Modals & Drawers
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState<CheckoutResult | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -130,11 +132,15 @@ export const App: React.FC = () => {
             </span>
           </div>
 
-          <div className="text-xs text-slate-500 font-medium">
-            <span className="bg-slate-100 text-slate-700 font-bold px-2.5 py-1 rounded-full text-[11px]">
-              {selectedDate === 'All' ? 'All Set Menus' : '5 Options Available'}
-            </span>
-          </div>
+          {/* Calculator Button (Replaces old gray pill) */}
+          <button
+            onClick={() => setIsCalculatorOpen(true)}
+            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer shrink-0"
+            title="Calculate monthly meal allowance based on working days and leave"
+          >
+            <Calculator className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <span>Calculator</span>
+          </button>
         </div>
 
         {/* Date Sections: Date 1 -> 5 Options, Date 2 -> 5 Options... */}
@@ -238,6 +244,11 @@ export const App: React.FC = () => {
       />
 
       <OrdersModal />
+      
+      <AllowanceCalculatorModal
+        isOpen={isCalculatorOpen}
+        onClose={() => setIsCalculatorOpen(false)}
+      />
 
       <LoginModal />
     </div>
