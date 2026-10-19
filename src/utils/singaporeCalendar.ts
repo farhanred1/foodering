@@ -203,6 +203,7 @@ export type CycleDayStatus =
   | 'holiday'
   | 'leave'
   | 'passed_claimed'
+  | 'walkin_purchase'
   | 'passed_no_order'
   | 'today_ordered'
   | 'today_not_ordered'
@@ -225,12 +226,15 @@ export interface CycleCalendarDay {
   orderTotal?: number;
   orderNumber?: string;
   itemsSummary?: string;
+  walletTxTotal?: number;
+  walletTxDetails?: string;
 }
 
 export function buildCycleCalendar(
   startDateStr: string,
   endDateStr: string,
   orders: { mealDate?: string; datePlaced?: string; total?: number; status?: string; items?: any[]; orderNumber?: string; id?: any }[],
+  transactions: { type?: string; amount?: number; date?: string; details?: string }[] = [],
   leaveDates: string[] = [],
   todayStr: string = (() => {
     const now = new Date();
@@ -272,6 +276,26 @@ export function buildCycleCalendar(
     }
   });
 
+  // Map wallet transactions (direct purchases / deductions without pre-order)
+  const txsByDate = new Map<string, { total: number; details: string }>();
+  transactions.forEach((tx) => {
+    if (tx.type === 'debit') {
+      const iso = normalizeToIso(tx.date);
+      if (iso) {
+        const existing = txsByDate.get(iso);
+        const amount = tx.amount || 0;
+        if (existing) {
+          existing.total += amount;
+        } else {
+          txsByDate.set(iso, {
+            total: amount,
+            details: tx.details || 'Canteen Machine Terminal 02'
+          });
+        }
+      }
+    }
+  });
+
   const days: CycleCalendarDay[] = [];
   const current = new Date(start);
 
@@ -292,6 +316,7 @@ export function buildCycleCalendar(
     const isUpcoming = iso > todayStr;
     const isLeave = leaveDates.includes(iso);
     const order = ordersByDate.get(iso);
+    const tx = txsByDate.get(iso);
 
     let status: CycleDayStatus;
     let statusLabel: string;
@@ -308,15 +333,21 @@ export function buildCycleCalendar(
     } else if (isPassed) {
       if (order) {
         status = 'passed_claimed';
-        statusLabel = `Claimed: Order #${order.orderNumber} ($${order.total.toFixed(2)})`;
+        statusLabel = `Claimed: Pre-order #${order.orderNumber} ($${order.total.toFixed(2)})`;
+      } else if (tx) {
+        status = 'walkin_purchase';
+        statusLabel = `Direct Purchase: -$${tx.total.toFixed(2)} (Wallet Deduction)`;
       } else {
         status = 'passed_no_order';
-        statusLabel = 'Passed: No order placed';
+        statusLabel = 'Passed: No order or purchase';
       }
     } else if (isToday) {
       if (order) {
         status = 'today_ordered';
-        statusLabel = `Today: Ordered #${order.orderNumber} ($${order.total.toFixed(2)})`;
+        statusLabel = `Today: Pre-order #${order.orderNumber} ($${order.total.toFixed(2)})`;
+      } else if (tx) {
+        status = 'walkin_purchase';
+        statusLabel = `Today: Direct Purchase -$${tx.total.toFixed(2)}`;
       } else {
         status = 'today_not_ordered';
         statusLabel = 'Today: No order placed yet';
@@ -347,7 +378,9 @@ export function buildCycleCalendar(
       statusLabel,
       orderTotal: order?.total,
       orderNumber: order?.orderNumber,
-      itemsSummary: order?.itemsSummary
+      itemsSummary: order?.itemsSummary,
+      walletTxTotal: tx?.total,
+      walletTxDetails: tx?.details
     });
 
     current.setDate(current.getDate() + 1);

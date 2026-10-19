@@ -33,7 +33,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
   isOpen,
   onClose
 }) => {
-  const { orders, walletBalance } = useOrders();
+  const { orders, walletBalance, walletTransactions } = useOrders();
   const cycles = useMemo(() => getAllowanceCycles(), []);
   const [selectedCycleId, setSelectedCycleId] = useState<string>(() => {
     const current = cycles.find((c) => c.isCurrent);
@@ -85,10 +85,11 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
       activeCycle.startDate,
       activeCycle.endDate,
       orders,
+      walletTransactions,
       leaveDates,
       todayStr
     );
-  }, [activeCycle, orders, leaveDates, todayStr]);
+  }, [activeCycle, orders, walletTransactions, leaveDates, todayStr]);
 
   // Food ordered in cycle from today until the 26th
   const upcomingCycleOrders = useMemo(() => {
@@ -107,6 +108,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
   // Summary counts from the calendar
   const calendarStats = useMemo(() => {
     let claimedCount = 0;
+    let directPurchaseCount = 0;
     let upcomingOrderedCount = 0;
     let upcomingNotOrderedCount = 0;
     let passedNoOrderCount = 0;
@@ -114,6 +116,8 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
     calendarDays.forEach((d) => {
       if (d.status === 'passed_claimed') {
         claimedCount++;
+      } else if (d.status === 'walkin_purchase') {
+        directPurchaseCount++;
       } else if (d.status === 'today_ordered' || d.status === 'upcoming_ordered') {
         upcomingOrderedCount++;
       } else if (d.status === 'upcoming_not_ordered' || d.status === 'today_not_ordered') {
@@ -125,6 +129,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
 
     return {
       claimedCount,
+      directPurchaseCount,
       upcomingOrderedCount,
       upcomingNotOrderedCount,
       passedNoOrderCount,
@@ -374,6 +379,10 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
                     cellClass = 'bg-emerald-600 text-white font-bold';
                     dotIcon = <span className="w-1 h-1 rounded-full bg-emerald-200 inline-block" />;
                     break;
+                  case 'walkin_purchase':
+                    cellClass = 'bg-amber-500 text-white font-bold';
+                    dotIcon = <span className="w-1 h-1 rounded-full bg-amber-100 inline-block" />;
+                    break;
                   case 'today_ordered':
                     cellClass = 'bg-emerald-700 text-white font-black ring-1 ring-emerald-500';
                     dotIcon = <span className="w-1 h-1 rounded-full bg-white inline-block animate-pulse" />;
@@ -443,7 +452,11 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
             <div className="pt-1 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-1 text-[9px] text-slate-500 font-medium">
               <div className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-xs bg-emerald-600 inline-block shrink-0" />
-                <span>Claimed ({calendarStats.claimedCount})</span>
+                <span>Pre-ordered Claimed ({calendarStats.claimedCount})</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-xs bg-amber-500 inline-block shrink-0" />
+                <span>Direct Purchase ({calendarStats.directPurchaseCount})</span>
               </div>
               <div className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-xs bg-brand-600 inline-block shrink-0" />
@@ -459,7 +472,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
               </div>
               <div className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-xs bg-slate-200 inline-block shrink-0" />
-                <span>Passed No Order ({calendarStats.passedNoOrderCount})</span>
+                <span>No Purchase ({calendarStats.passedNoOrderCount})</span>
               </div>
             </div>
           </div>
