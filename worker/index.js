@@ -6,10 +6,13 @@
 
 const TARGET_HOST = 'https://ssip-cafeteria.whew.life';
 
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': '*',
   'Access-Control-Max-Age': '86400',
 };
 
@@ -30,21 +33,49 @@ export default {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    const url = new URL(request.url);
+    try {
+      const url = new URL(request.url);
 
-    // Health check
-    if (url.pathname === '/' || url.pathname === '/health') {
-      return jsonResponse({ status: 'ok', service: 'SSIP Cafeteria Auth Worker' });
-    }
-
-    // 2. Handle Login Endpoint
-    if (url.pathname === '/api/auth' || url.pathname === '/login') {
-      if (request.method !== 'POST') {
-        return jsonResponse({ error: 'Method not allowed' }, 405);
+      // Health check
+      if (url.pathname === '/' || url.pathname === '/health') {
+        return jsonResponse({ status: 'ok', service: 'SSIP Cafeteria Auth Worker' });
       }
 
-      try {
-        const body = await request.json();
+      // Diagnostic / Debug endpoint
+      if (url.pathname === '/debug') {
+        try {
+          const testRes = await fetch(`${TARGET_HOST}/my-account/`, {
+            headers: {
+              'User-Agent': BROWSER_UA,
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+          });
+          const html = await testRes.text();
+          const nonceMatch =
+            html.match(/name=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i) ||
+            html.match(/value=['"]([^'"]+)['"][^>]*name=['"]woocommerce-login-nonce['"]/i) ||
+            html.match(/id=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i) ||
+            html.match(/value=['"]([^'"]+)['"][^>]*id=['"]woocommerce-login-nonce['"]/i);
+          return jsonResponse({
+            status: 'ok',
+            cafeteriaStatus: testRes.status,
+            nonceFound: !!nonceMatch,
+            nonceValue: nonceMatch ? nonceMatch[1] : null,
+            htmlLength: html.length,
+            htmlPreview: html.slice(0, 300).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+          });
+        } catch (dbgErr) {
+          return jsonResponse({ status: 'error', message: dbgErr.message || String(dbgErr) }, 500);
+        }
+      }
+
+      // 2. Handle Login Endpoint
+      if (url.pathname === '/api/auth' || url.pathname === '/login') {
+        if (request.method !== 'POST') {
+          return jsonResponse({ error: 'Method not allowed' }, 405);
+        }
+
+        const body = await request.json().catch(() => ({}));
         const username = (body.username || '').trim();
         const password = body.password || '';
 
@@ -55,7 +86,7 @@ export default {
         // Step A: Fetch login nonce and initial session cookies from /my-account/
         const initialRes = await fetch(`${TARGET_HOST}/my-account/`, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'User-Agent': BROWSER_UA,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
           },
@@ -86,7 +117,7 @@ export default {
           }, 502);
         }
 
-        // Step B: Submit login form to /my-account/
+        // Step B: Submit login form to /my-account/ (follow redirect)
         const formData = new URLSearchParams();
         formData.append('username', username);
         formData.append('password', password);
@@ -99,14 +130,14 @@ export default {
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'Cookie': cookies,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FooderingAuth/1.0',
+            'User-Agent': BROWSER_UA,
             'Referer': `${TARGET_HOST}/my-account/`,
           },
           body: formData.toString(),
-          redirect: 'manual',
+          redirect: 'follow',
         });
 
-        // Collect cookies returned by login POST
+        // Collect any new cookies from response
         let authCookies = cookies;
         if (typeof loginRes.headers.getSetCookie === 'function') {
           const newCookies = loginRes.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
@@ -116,7 +147,6 @@ export default {
           if (raw) authCookies = `${authCookies}; ${raw.split(';')[0]}`;
         }
 
-        const isAuthSuccess = authCookies.includes('wordpress_logged_in') || loginRes.status === 302;
         const loginHtml = await loginRes.text();
 
         // Step C: Check if WordPress rejected login
@@ -126,6 +156,13 @@ export default {
           loginHtml.includes('Unknown username') ||
           loginHtml.includes('is incorrect') ||
           loginHtml.includes('Incorrect username or password');
+
+        const isAuthSuccess =
+          !isError &&
+          (loginHtml.includes('woocommerce-MyAccount-navigation') ||
+           loginHtml.includes('customer-logout') ||
+           loginHtml.includes('Hello') ||
+           authCookies.includes('wordpress_logged_in'));
 
         if (!isAuthSuccess || isError) {
           const errMatch = loginHtml.match(/<ul class="woocommerce-error[^>]*>([\s\S]*?)<\/ul>/i);
@@ -144,32 +181,25 @@ export default {
         let firstName = cleanUser;
         let lastName = '';
         let email = `${cleanUser.toLowerCase()}@shimano.com.sg`;
-        let walletBalance = 100.0;
+        let walletBalance = 0.0;
         const orders = [];
         const transactions = [];
 
-        // 1. Fetch /my-account/ for display name
-        try {
-          const accRes = await fetch(`${TARGET_HOST}/my-account/`, {
-            headers: { 'Cookie': authCookies, 'User-Agent': 'Mozilla/5.0 FooderingAuth/1.0' },
-          });
-          if (accRes.ok) {
-            const accHtml = await accRes.text();
-            const greeting = accHtml.match(/Hello\s+<strong>([^<]+)<\/strong>/i) ||
-                             accHtml.match(/<strong>([^<]+)<\/strong>\s*\(not/i);
-            if (greeting && greeting[1]) {
-              displayName = greeting[1].trim();
-              const parts = displayName.split(' ');
-              firstName = parts[0] || displayName;
-              lastName = parts.slice(1).join(' ') || '';
-            }
-          }
-        } catch (e) {}
+        // 1. Parse display name from logged-in page
+        const greeting =
+          loginHtml.match(/Hello\s+<strong>([^<]+)<\/strong>/i) ||
+          loginHtml.match(/<strong>([^<]+)<\/strong>\s*\(not/i);
+        if (greeting && greeting[1]) {
+          displayName = greeting[1].trim();
+          const parts = displayName.split(' ');
+          firstName = parts[0] || displayName;
+          lastName = parts.slice(1).join(' ') || '';
+        }
 
         // 2. Fetch /my-account/edit-account/ for full registered name & email
         try {
           const editRes = await fetch(`${TARGET_HOST}/my-account/edit-account/`, {
-            headers: { 'Cookie': authCookies, 'User-Agent': 'Mozilla/5.0 FooderingAuth/1.0' },
+            headers: { 'Cookie': authCookies, 'User-Agent': BROWSER_UA },
           });
           if (editRes.ok) {
             const editHtml = await editRes.text();
@@ -188,12 +218,13 @@ export default {
         // 3. Fetch /my-account/woo-wallet/ for live wallet balance and transactions
         try {
           const walletRes = await fetch(`${TARGET_HOST}/my-account/woo-wallet/`, {
-            headers: { 'Cookie': authCookies, 'User-Agent': 'Mozilla/5.0 FooderingAuth/1.0' },
+            headers: { 'Cookie': authCookies, 'User-Agent': BROWSER_UA },
           });
           if (walletRes.ok) {
             const walletHtml = await walletRes.text();
-            const balMatch = walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
-                             walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i);
+            const balMatch =
+              walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
+              walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i);
             if (balMatch) {
               const val = parseFloat(balMatch[1]);
               if (!isNaN(val)) walletBalance = val;
@@ -269,11 +300,14 @@ export default {
             orders,
           },
         });
-      } catch (err) {
-        return jsonResponse({ error: 'Authentication service error: ' + (err.message || 'Unknown error') }, 500);
       }
-    }
 
-    return jsonResponse({ error: 'Not found' }, 404);
+      return jsonResponse({ error: 'Not found' }, 404);
+    } catch (fatalErr) {
+      return jsonResponse({
+        success: false,
+        error: 'Auth worker error: ' + (fatalErr.message || String(fatalErr))
+      }, 500);
+    }
   },
 };

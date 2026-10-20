@@ -366,9 +366,17 @@ export const CafeteriaAPI = {
     }
 
     // If all endpoints failed (network/CORS/offline)
+    const isNetworkErr =
+      !lastError ||
+      (lastError.message &&
+        (lastError.message.includes('fetch') ||
+         lastError.message.includes('Load failed') ||
+         lastError.message.includes('Network') ||
+         lastError.message.includes('Failed to fetch')));
+
     throw new Error(
-      lastError?.message && lastError.message.includes('fetch')
-        ? 'Unable to connect to cafeteria authentication service. Please check your network connection.'
+      isNetworkErr
+        ? 'Unable to connect to cafeteria authentication service. Please check your network connection or verify the Auth Worker URL.'
         : (lastError?.message || 'Authentication service unavailable. Please check your network connection.')
     );
   },
