@@ -43,30 +43,65 @@ export default {
 
       // Diagnostic / Debug endpoint
       if (url.pathname === '/debug') {
+        const results = {};
+        
+        // Test 1: REST API
         try {
-          const testRes = await fetch(`${TARGET_HOST}/my-account/`, {
+          const restRes = await fetch(`${TARGET_HOST}/wp-json/wp/v2/asset_management/get-user-list`);
+          results.restApi = { status: restRes.status, ok: restRes.ok };
+        } catch (e) {
+          results.restApi = { error: e.message };
+        }
+
+        // Test 2: /my-account/ standard
+        try {
+          const accRes = await fetch(`${TARGET_HOST}/my-account/`, {
             headers: {
               'User-Agent': BROWSER_UA,
               'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             },
           });
-          const html = await testRes.text();
-          const nonceMatch =
-            html.match(/name=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i) ||
-            html.match(/value=['"]([^'"]+)['"][^>]*name=['"]woocommerce-login-nonce['"]/i) ||
-            html.match(/id=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i) ||
-            html.match(/value=['"]([^'"]+)['"][^>]*id=['"]woocommerce-login-nonce['"]/i);
-          return jsonResponse({
-            status: 'ok',
-            cafeteriaStatus: testRes.status,
-            nonceFound: !!nonceMatch,
-            nonceValue: nonceMatch ? nonceMatch[1] : null,
-            htmlLength: html.length,
-            htmlPreview: html.slice(0, 300).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
-          });
-        } catch (dbgErr) {
-          return jsonResponse({ status: 'error', message: dbgErr.message || String(dbgErr) }, 500);
+          const html = await accRes.text();
+          const reason = html.match(/<[^>]*class="[^"]*(?:reason|message|error|alert)[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/i);
+          const wfText = html.match(/Your access to this site has been limited[^<]*/i);
+          const ipText = html.match(/Your IP:?\s*([0-9a-f.:]+)/i);
+          const nonce = html.match(/woocommerce-login-nonce/i);
+          results.myAccount = {
+            status: accRes.status,
+            length: html.length,
+            hasNonceKeyword: !!nonce,
+            wfMessage: wfText ? wfText[0] : null,
+            wfIp: ipText ? ipText[1] : null,
+            wfReason: reason ? reason[1].replace(/<[^>]+>/g, ' ').trim() : null,
+            preview: html.slice(0, 200).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+          };
+        } catch (e) {
+          results.myAccount = { error: e.message };
         }
+
+        // Test 3: /my-account/ with Singapore IP header (X-Forwarded-For)
+        try {
+          const sgRes = await fetch(`${TARGET_HOST}/my-account/`, {
+            headers: {
+              'User-Agent': BROWSER_UA,
+              'X-Forwarded-For': '118.200.0.1', // Singapore Singtel IP
+              'CF-Connecting-IP': '118.200.0.1',
+              'Accept': 'text/html,application/xhtml+xml',
+            },
+          });
+          const sgHtml = await sgRes.text();
+          const sgNonce = sgHtml.match(/woocommerce-login-nonce/i);
+          results.myAccountWithSgIp = {
+            status: sgRes.status,
+            length: sgHtml.length,
+            hasNonceKeyword: !!sgNonce,
+            preview: sgHtml.slice(0, 150).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+          };
+        } catch (e) {
+          results.myAccountWithSgIp = { error: e.message };
+        }
+
+        return jsonResponse(results);
       }
 
       // 2. Handle Login Endpoint
