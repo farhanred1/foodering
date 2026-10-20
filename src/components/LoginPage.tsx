@@ -163,6 +163,18 @@ export const LoginPage: React.FC = () => {
                 >
                   {savedSuccess ? <Check className="w-3.5 h-3.5" /> : 'Save'}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthWorkerUrl('');
+                    setWorkerUrlInput('');
+                    setSavedSuccess(true);
+                    setTimeout(() => setSavedSuccess(false), 1200);
+                  }}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-semibold shrink-0 transition-colors"
+                >
+                  Reset
+                </button>
               </div>
             </form>
           )}

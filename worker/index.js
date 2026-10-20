@@ -55,13 +55,18 @@ export default {
         // Step A: Fetch login nonce and initial session cookies from /my-account/
         const initialRes = await fetch(`${TARGET_HOST}/my-account/`, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FooderingAuth/1.0',
-            'Accept': 'text/html,application/xhtml+xml',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
           },
         });
 
         const initialHtml = await initialRes.text();
-        const nonceMatch = initialHtml.match(/name=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i);
+        const nonceMatch =
+          initialHtml.match(/name=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i) ||
+          initialHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]woocommerce-login-nonce['"]/i) ||
+          initialHtml.match(/id=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i) ||
+          initialHtml.match(/value=['"]([^'"]+)['"][^>]*id=['"]woocommerce-login-nonce['"]/i);
         const nonce = nonceMatch ? nonceMatch[1] : '';
 
         // Extract cookies from initial response
@@ -74,7 +79,11 @@ export default {
         }
 
         if (!nonce) {
-          return jsonResponse({ error: 'Could not obtain cafeteria login security token.' }, 502);
+          const status = initialRes.status;
+          const sample = initialHtml.slice(0, 150).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          return jsonResponse({
+            error: `Could not obtain cafeteria login security token (HTTP ${status}). ${sample || 'Empty response'}`
+          }, 502);
         }
 
         // Step B: Submit login form to /my-account/

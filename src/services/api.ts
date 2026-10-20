@@ -5,19 +5,16 @@ const isDev = import.meta.env.DEV;
 const API_BASE = isDev ? '/api' : 'https://ssip-cafeteria.whew.life';
 
 export function getAuthWorkerUrls(): string[] {
+  // When running locally in dev (localhost or 172.30.2.21), ALWAYS use local /api dev server
+  if (import.meta.env.DEV) {
+    return ['/api'];
+  }
   const custom =
     import.meta.env.VITE_AUTH_WORKER_URL ||
     localStorage.getItem('ssip_auth_worker_url') ||
     sessionStorage.getItem('ssip_auth_worker_url');
   if (custom && custom.trim()) {
     return [custom.trim()];
-  }
-  if (import.meta.env.DEV) {
-    return [
-      '/api',
-      'https://ssip-cafeteria-auth.farhanreduan911.workers.dev',
-      'https://black-silence-86cb.farhanreduan911.workers.dev'
-    ];
   }
   return [
     'https://ssip-cafeteria-auth.farhanreduan911.workers.dev',
