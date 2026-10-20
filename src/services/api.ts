@@ -4,6 +4,23 @@ import snapshotData from '../data/menuSnapshot.json';
 const isDev = import.meta.env.DEV;
 const API_BASE = isDev ? '/api' : 'https://ssip-cafeteria.whew.life';
 
+export function getAuthWorkerUrl(): string {
+  return (
+    import.meta.env.VITE_AUTH_WORKER_URL ||
+    localStorage.getItem('ssip_auth_worker_url') ||
+    sessionStorage.getItem('ssip_auth_worker_url') ||
+    ''
+  );
+}
+
+export function setAuthWorkerUrl(url: string): void {
+  if (url && url.trim()) {
+    localStorage.setItem('ssip_auth_worker_url', url.trim());
+  } else {
+    localStorage.removeItem('ssip_auth_worker_url');
+  }
+}
+
 function getStoredHeader(key: string): string | null {
   return sessionStorage.getItem(key);
 }
@@ -280,7 +297,38 @@ export const CafeteriaAPI = {
       throw new Error('Please enter both your Employee ID / Username and Password.');
     }
 
-    // 1. Fetch WooCommerce login form to get authentic login nonce
+    // 1. If Cloudflare Auth Worker is configured, authenticate via serverless edge
+    const workerUrl = getAuthWorkerUrl();
+    if (workerUrl) {
+      try {
+        const cleanEndpoint = workerUrl.replace(/\/+$/, '');
+        const workerRes = await fetch(`${cleanEndpoint}/api/auth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: cleanUser, password }),
+        });
+
+        const data = await workerRes.json();
+        if (!workerRes.ok || !data.success) {
+          throw new Error(data.error || 'Incorrect username or password. Please verify your credentials.');
+        }
+
+        const session = data.session as UserSession;
+        sessionStorage.setItem('ssip_user_session', JSON.stringify(session));
+        sessionStorage.setItem('ssip_session_wallet', (session.walletBalance || 100).toString());
+        sessionStorage.setItem('ssip_session_orders', JSON.stringify(data.session?.orders || []));
+        sessionStorage.setItem('ssip_session_txs', JSON.stringify(session.walletTransactions || []));
+        sessionStorage.removeItem('ssip_logged_out');
+        return session;
+      } catch (err: any) {
+        if (err.message && (err.message.includes('password') || err.message.includes('username') || err.message.includes('Incorrect') || err.message.includes('credentials'))) {
+          throw err;
+        }
+        console.warn('Auth Worker unreachable or error, falling back to direct/directory flow', err);
+      }
+    }
+
+    // 2. Fetch WooCommerce login form to get authentic login nonce
     let nonce = '';
     try {
       const initialRes = await fetch(`${API_BASE}/my-account/`, { credentials: 'include' });

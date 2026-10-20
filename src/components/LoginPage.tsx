@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Lock, User, ShieldCheck, AlertCircle, UtensilsCrossed, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lock, User, ShieldCheck, AlertCircle, UtensilsCrossed, ArrowRight, Server, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getAuthWorkerUrl, setAuthWorkerUrl } from '../services/api';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
@@ -8,6 +9,23 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showServerConfig, setShowServerConfig] = useState(false);
+  const [workerUrlInput, setWorkerUrlInput] = useState('');
+  const [savedSuccess, setSavedSuccess] = useState(false);
+
+  useEffect(() => {
+    setWorkerUrlInput(getAuthWorkerUrl());
+  }, []);
+
+  const handleSaveWorkerUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthWorkerUrl(workerUrlInput);
+    setSavedSuccess(true);
+    setTimeout(() => {
+      setSavedSuccess(false);
+      setShowServerConfig(false);
+    }, 1200);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +127,46 @@ export const LoginPage: React.FC = () => {
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
+
+        {/* Server Config Collapsible */}
+        <div className="px-5 sm:px-6 pb-4 pt-1 border-t border-slate-100/80 bg-slate-50/40">
+          <button
+            type="button"
+            onClick={() => setShowServerConfig(!showServerConfig)}
+            className="w-full flex items-center justify-between text-[11px] text-slate-500 hover:text-slate-800 transition-colors font-medium py-1"
+          >
+            <span className="flex items-center gap-1.5">
+              <Server className="w-3.5 h-3.5 text-slate-400" />
+              <span>Auth Edge Worker (Cloudflare)</span>
+            </span>
+            <span className="text-[10px] text-brand-600 font-bold hover:underline">
+              {showServerConfig ? 'Close' : 'Configure'}
+            </span>
+          </button>
+
+          {showServerConfig && (
+            <form onSubmit={handleSaveWorkerUrl} className="mt-2.5 pt-2 border-t border-slate-200/60 space-y-2 animate-in fade-in duration-150">
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                Paste your deployed Cloudflare Worker URL to validate staff passwords directly via edge proxy.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={workerUrlInput}
+                  onChange={(e) => setWorkerUrlInput(e.target.value)}
+                  placeholder="https://ssip-cafeteria-auth.YOUR_SUBDOMAIN.workers.dev"
+                  className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-brand-500 text-slate-800 font-mono"
+                />
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold shrink-0 transition-colors flex items-center gap-1"
+                >
+                  {savedSuccess ? <Check className="w-3.5 h-3.5" /> : 'Save'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
 
       </div>
 

@@ -1,0 +1,6 @@
+name = "ssip-cafeteria-auth"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# Automatically deploys to your free workers.dev subdomain:
+# https://ssip-cafeteria-auth.<your-subdomain>.workers.dev

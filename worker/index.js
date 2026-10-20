@@ -1,0 +1,270 @@
+/**
+ * Cloudflare Worker for SSIP Cafeteria Authentication
+ * Proxies login requests from Foodering Web App to ssip-cafeteria.whew.life,
+ * validating staff passwords against WordPress and returning authenticated session data.
+ */
+
+const TARGET_HOST = 'https://ssip-cafeteria.whew.life';
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Max-Age': '86400',
+};
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...CORS_HEADERS,
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    // 1. Handle CORS Preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    const url = new URL(request.url);
+
+    // Health check
+    if (url.pathname === '/' || url.pathname === '/health') {
+      return jsonResponse({ status: 'ok', service: 'SSIP Cafeteria Auth Worker' });
+    }
+
+    // 2. Handle Login Endpoint
+    if (url.pathname === '/api/auth' || url.pathname === '/login') {
+      if (request.method !== 'POST') {
+        return jsonResponse({ error: 'Method not allowed' }, 405);
+      }
+
+      try {
+        const body = await request.json();
+        const username = (body.username || '').trim();
+        const password = body.password || '';
+
+        if (!username || !password) {
+          return jsonResponse({ error: 'Please enter both username and password.' }, 400);
+        }
+
+        // Step A: Fetch login nonce and initial session cookies from /my-account/
+        const initialRes = await fetch(`${TARGET_HOST}/my-account/`, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FooderingAuth/1.0',
+            'Accept': 'text/html,application/xhtml+xml',
+          },
+        });
+
+        const initialHtml = await initialRes.text();
+        const nonceMatch = initialHtml.match(/name=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i);
+        const nonce = nonceMatch ? nonceMatch[1] : '';
+
+        // Extract cookies from initial response
+        let cookies = '';
+        if (typeof initialRes.headers.getSetCookie === 'function') {
+          cookies = initialRes.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
+        } else {
+          const rawCookie = initialRes.headers.get('set-cookie');
+          if (rawCookie) cookies = rawCookie.split(';')[0];
+        }
+
+        if (!nonce) {
+          return jsonResponse({ error: 'Could not obtain cafeteria login security token.' }, 502);
+        }
+
+        // Step B: Submit login form to /my-account/
+        const formData = new URLSearchParams();
+        formData.append('username', username);
+        formData.append('password', password);
+        formData.append('woocommerce-login-nonce', nonce);
+        formData.append('_wp_http_referer', '/my-account/');
+        formData.append('login', 'Log in');
+
+        const loginRes = await fetch(`${TARGET_HOST}/my-account/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Cookie': cookies,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FooderingAuth/1.0',
+            'Referer': `${TARGET_HOST}/my-account/`,
+          },
+          body: formData.toString(),
+          redirect: 'manual',
+        });
+
+        // Collect cookies returned by login POST
+        let authCookies = cookies;
+        if (typeof loginRes.headers.getSetCookie === 'function') {
+          const newCookies = loginRes.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
+          if (newCookies) authCookies = `${authCookies}; ${newCookies}`;
+        } else {
+          const raw = loginRes.headers.get('set-cookie');
+          if (raw) authCookies = `${authCookies}; ${raw.split(';')[0]}`;
+        }
+
+        const isAuthSuccess = authCookies.includes('wordpress_logged_in') || loginRes.status === 302;
+        const loginHtml = await loginRes.text();
+
+        // Step C: Check if WordPress rejected login
+        const isError =
+          loginHtml.includes('woocommerce-error') ||
+          loginHtml.includes('The password you entered') ||
+          loginHtml.includes('Unknown username') ||
+          loginHtml.includes('is incorrect') ||
+          loginHtml.includes('Incorrect username or password');
+
+        if (!isAuthSuccess || isError) {
+          const errMatch = loginHtml.match(/<ul class="woocommerce-error[^>]*>([\s\S]*?)<\/ul>/i);
+          let cleanMsg = errMatch
+            ? errMatch[1].replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+            : '';
+          if (!cleanMsg || cleanMsg.length < 5) {
+            cleanMsg = 'Incorrect username or password. Please verify your credentials.';
+          }
+          return jsonResponse({ success: false, error: cleanMsg }, 401);
+        }
+
+        // Step D: Successfully Authenticated! Fetch staff profile, wallet balance, and orders
+        const cleanUser = username.toUpperCase();
+        let displayName = cleanUser.startsWith('SIP') ? `SHIMANO EMPLOYEE #${cleanUser.replace(/^SIP/i, '')}` : cleanUser;
+        let firstName = cleanUser;
+        let lastName = '';
+        let email = `${cleanUser.toLowerCase()}@shimano.com.sg`;
+        let walletBalance = 100.0;
+        const orders = [];
+        const transactions = [];
+
+        // 1. Fetch /my-account/ for display name
+        try {
+          const accRes = await fetch(`${TARGET_HOST}/my-account/`, {
+            headers: { 'Cookie': authCookies, 'User-Agent': 'Mozilla/5.0 FooderingAuth/1.0' },
+          });
+          if (accRes.ok) {
+            const accHtml = await accRes.text();
+            const greeting = accHtml.match(/Hello\s+<strong>([^<]+)<\/strong>/i) ||
+                             accHtml.match(/<strong>([^<]+)<\/strong>\s*\(not/i);
+            if (greeting && greeting[1]) {
+              displayName = greeting[1].trim();
+              const parts = displayName.split(' ');
+              firstName = parts[0] || displayName;
+              lastName = parts.slice(1).join(' ') || '';
+            }
+          }
+        } catch (e) {}
+
+        // 2. Fetch /my-account/edit-account/ for full registered name & email
+        try {
+          const editRes = await fetch(`${TARGET_HOST}/my-account/edit-account/`, {
+            headers: { 'Cookie': authCookies, 'User-Agent': 'Mozilla/5.0 FooderingAuth/1.0' },
+          });
+          if (editRes.ok) {
+            const editHtml = await editRes.text();
+            const fnMatch = editHtml.match(/name="account_first_name"[^>]*value="([^"]*)"/i);
+            const lnMatch = editHtml.match(/name="account_last_name"[^>]*value="([^"]*)"/i);
+            const emMatch = editHtml.match(/name="account_email"[^>]*value="([^"]*)"/i);
+            if (fnMatch && fnMatch[1]) firstName = fnMatch[1].trim();
+            if (lnMatch && lnMatch[1]) lastName = lnMatch[1].trim();
+            if (emMatch && emMatch[1]) email = emMatch[1].trim();
+            if (firstName || lastName) {
+              displayName = `${firstName} ${lastName}`.trim();
+            }
+          }
+        } catch (e) {}
+
+        // 3. Fetch /my-account/woo-wallet/ for live wallet balance and transactions
+        try {
+          const walletRes = await fetch(`${TARGET_HOST}/my-account/woo-wallet/`, {
+            headers: { 'Cookie': authCookies, 'User-Agent': 'Mozilla/5.0 FooderingAuth/1.0' },
+          });
+          if (walletRes.ok) {
+            const walletHtml = await walletRes.text();
+            const balMatch = walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
+                             walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i);
+            if (balMatch) {
+              const val = parseFloat(balMatch[1]);
+              if (!isNaN(val)) walletBalance = val;
+            }
+
+            const txRows = [...walletHtml.matchAll(/<tr[^>]*class="[^"]*woocommerce-wallet-history-row[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi)];
+            for (const row of txRows) {
+              const cols = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(c => c[1].replace(/<[^>]+>/g, '').trim());
+              if (cols.length >= 4) {
+                const [id, date, amountStr, details] = cols;
+                const amountVal = parseFloat(amountStr.replace(/[^0-9.]/g, '')) || 0;
+                const isCredit = /credit/i.test(row[1]) || /credit/i.test(details);
+                transactions.push({
+                  id: id || `tx-${Math.random()}`,
+                  date: date || '',
+                  amount: amountVal,
+                  type: isCredit ? 'credit' : 'debit',
+                  details: details || 'Cafeteria Transaction',
+                });
+              }
+            }
+          }
+        } catch (e) {}
+
+        // 4. Fetch live orders from KPOM API
+        try {
+          const kpomRes = await fetch(`${TARGET_HOST}/wp-json/wp/v2/kpom/get-user-order-items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: cleanUser }),
+          });
+          if (kpomRes.ok) {
+            const kpomData = await kpomRes.json();
+            const items = kpomData?.mealplan_order_items_data?.order_items;
+            if (Array.isArray(items)) {
+              for (const item of items) {
+                orders.push({
+                  id: item.order_id || Math.floor(Math.random() * 100000),
+                  orderNumber: String(item.order_number || item.order_id || ''),
+                  datePlaced: item.order_date || item.delivery_date || '',
+                  deliveryDate: item.delivery_date || '',
+                  status: item.status || 'Completed',
+                  total: parseFloat(item.price || item.total || '0') || 0,
+                  customerNote: item.note || '',
+                  mealDate: item.delivery_date || '',
+                  paymentMethod: 'Cafeteria Allowance',
+                  items: [{
+                    id: item.product_id || 1,
+                    name: item.product_name || item.item_name || 'Meal Order',
+                    price: parseFloat(item.price || '0') || 0,
+                    quantity: item.quantity || 1,
+                    mealDate: item.delivery_date || '',
+                  }],
+                });
+              }
+            }
+          }
+        } catch (e) {}
+
+        // Return the verified user session payload
+        return jsonResponse({
+          success: true,
+          session: {
+            isLoggedIn: true,
+            username: cleanUser,
+            displayName,
+            email,
+            phone: '',
+            firstName,
+            lastName,
+            walletBalance,
+            walletTransactions: transactions,
+            orders,
+          },
+        });
+      } catch (err) {
+        return jsonResponse({ error: 'Authentication service error: ' + (err.message || 'Unknown error') }, 500);
+      }
+    }
+
+    return jsonResponse({ error: 'Not found' }, 404);
+  },
+};
