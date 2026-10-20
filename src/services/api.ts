@@ -329,7 +329,9 @@ export const CafeteriaAPI = {
           const errMsg = data.error || (workerRes.status === 401
             ? 'Incorrect username or password. Please verify your staff credentials.'
             : `Authentication failed (Server HTTP ${workerRes.status}).`);
-          throw new Error(errMsg);
+          const serverErr = new Error(errMsg);
+          (serverErr as any).isServerResponse = true;
+          throw serverErr;
         }
 
         const session = data.session as UserSession;
@@ -347,7 +349,10 @@ export const CafeteriaAPI = {
         sessionStorage.removeItem('ssip_logged_out');
         return session;
       } catch (err: any) {
-        // If this is a credential rejection or explicit auth error, rethrow immediately to the user!
+        // If this is an actual server response (e.g. invalid credentials or server error), show it directly!
+        if (err.isServerResponse) {
+          throw err;
+        }
         if (
           err.message &&
           (err.message.includes('password') ||

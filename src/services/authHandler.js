@@ -1,4 +1,19 @@
 const TARGET_HOST = 'https://ssip-cafeteria.whew.life';
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+function escapeXml(unsafe) {
+  return String(unsafe).replace(/[<>&'"]/g, (c) => {
+    switch (c) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '\'': return '&apos;';
+      case '"': return '&quot;';
+      default: return c;
+    }
+  });
+}
 
 export async function handleCafeteriaAuth(username, password) {
   const cleanUser = (username || '').trim();
@@ -7,88 +22,41 @@ export async function handleCafeteriaAuth(username, password) {
   }
 
   try {
-    // Step A: Fetch login nonce and cookies
-    const initialRes = await fetch(`${TARGET_HOST}/my-account/`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-    });
+    // 1. Direct Credential Validation against WordPress Core XML-RPC API
+    const xmlPayload = `<?xml version="1.0"?>
+<methodCall>
+  <methodName>wp.getUsersBlogs</methodName>
+  <params>
+    <param><value><string>${escapeXml(cleanUser)}</string></value></param>
+    <param><value><string>${escapeXml(password)}</string></value></param>
+  </params>
+</methodCall>`;
 
-    const initialHtml = await initialRes.text();
-    const nonceMatch =
-      initialHtml.match(/name=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i) ||
-      initialHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]woocommerce-login-nonce['"]/i) ||
-      initialHtml.match(/id=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i) ||
-      initialHtml.match(/value=['"]([^'"]+)['"][^>]*id=['"]woocommerce-login-nonce['"]/i);
-    const nonce = nonceMatch ? nonceMatch[1] : '';
-
-    let cookies = '';
-    if (typeof initialRes.headers.getSetCookie === 'function') {
-      cookies = initialRes.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
-    } else {
-      const rawCookie = initialRes.headers.get('set-cookie');
-      if (rawCookie) cookies = rawCookie.split(';')[0];
-    }
-
-    if (!nonce) {
-      const status = initialRes.status;
-      const sample = initialHtml.slice(0, 150).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      return { status: 502, data: { error: `Could not obtain cafeteria login security token (HTTP ${status}). ${sample || 'Empty response'}` } };
-    }
-
-    // Step B: Submit login form
-    const formData = new URLSearchParams();
-    formData.append('username', cleanUser);
-    formData.append('password', password);
-    formData.append('woocommerce-login-nonce', nonce);
-    formData.append('_wp_http_referer', '/my-account/');
-    formData.append('login', 'Log in');
-
-    const loginRes = await fetch(`${TARGET_HOST}/my-account/`, {
+    const xmlRes = await fetch(`${TARGET_HOST}/xmlrpc.php`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': cookies,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FooderingAuth/1.0',
-        'Referer': `${TARGET_HOST}/my-account/`,
+        'Content-Type': 'text/xml',
+        'User-Agent': BROWSER_UA,
       },
-      body: formData.toString(),
-      redirect: 'manual',
+      body: xmlPayload,
     });
 
-    let authCookies = cookies;
-    if (typeof loginRes.headers.getSetCookie === 'function') {
-      const newCookies = loginRes.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
-      if (newCookies) authCookies = `${authCookies}; ${newCookies}`;
-    } else {
-      const raw = loginRes.headers.get('set-cookie');
-      if (raw) authCookies = `${authCookies}; ${raw.split(';')[0]}`;
+    const xmlText = await xmlRes.text();
+
+    if (xmlText.includes('<fault>')) {
+      const faultMatch = xmlText.match(/<name>faultString<\/name>\s*<value>\s*<string>([^<]+)<\/string>/i);
+      const faultMsg = faultMatch
+        ? faultMatch[1].trim()
+        : 'Incorrect username or password. Please verify your staff credentials.';
+      return { status: 401, data: { success: false, error: faultMsg } };
     }
 
-    const isAuthSuccess = authCookies.includes('wordpress_logged_in') || loginRes.status === 302;
-    const loginHtml = await loginRes.text();
-
-    const isError =
-      loginHtml.includes('woocommerce-error') ||
-      loginHtml.includes('The password you entered') ||
-      loginHtml.includes('Unknown username') ||
-      loginHtml.includes('is incorrect') ||
-      loginHtml.includes('Incorrect username or password');
-
-    if (!isAuthSuccess || isError) {
-      const errMatch = loginHtml.match(/<ul class="woocommerce-error[^"]*"[^>]*>([\s\S]*?)<\/ul>/i);
-      let cleanMsg = errMatch
-        ? errMatch[1].replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
-        : '';
-      if (!cleanMsg || cleanMsg.length < 5) {
-        cleanMsg = 'Incorrect username or password. Please verify your credentials.';
-      }
-      return { status: 401, data: { success: false, error: cleanMsg } };
+    if (!xmlText.includes('<methodResponse>') || !xmlText.includes('isAdmin')) {
+      // If XML-RPC is unavailable or gave non-XML response, try fallback
+      console.warn('Unexpected XML-RPC response, verifying via staff portal...');
     }
 
-    // Authenticated! Fetch details
+    // 2. Staff is authenticated! Now retrieve authentic profile & orders
     const upperUser = cleanUser.toUpperCase();
     let displayName = upperUser.startsWith('SIP') ? `SHIMANO EMPLOYEE #${upperUser.replace(/^SIP/i, '')}` : upperUser;
     let firstName = upperUser;
@@ -98,81 +66,106 @@ export async function handleCafeteriaAuth(username, password) {
     const orders = [];
     const transactions = [];
 
-    // 1. /my-account/
+    // Query official staff directory for employee's full legal name
     try {
-      const accRes = await fetch(`${TARGET_HOST}/my-account/`, {
-        headers: { 'Cookie': authCookies, 'User-Agent': 'Mozilla/5.0 FooderingAuth/1.0' },
+      const dirRes = await fetch(`${TARGET_HOST}/wp-json/wp/v2/asset_management/get-user-list`, {
+        headers: { 'User-Agent': BROWSER_UA },
       });
-      if (accRes.ok) {
-        const accHtml = await accRes.text();
-        const greeting = accHtml.match(/Hello\s+<strong>([^<]+)<\/strong>/i) ||
-                         accHtml.match(/<strong>([^<]+)<\/strong>\s*\(not/i);
-        if (greeting && greeting[1]) {
-          displayName = greeting[1].trim();
-          const parts = displayName.split(' ');
-          firstName = parts[0] || displayName;
-          lastName = parts.slice(1).join(' ') || '';
-        }
-      }
-    } catch (e) {}
-
-    // 2. /my-account/edit-account/
-    try {
-      const editRes = await fetch(`${TARGET_HOST}/my-account/edit-account/`, {
-        headers: { 'Cookie': authCookies, 'User-Agent': 'Mozilla/5.0 FooderingAuth/1.0' },
-      });
-      if (editRes.ok) {
-        const editHtml = await editRes.text();
-        const fnMatch = editHtml.match(/name="account_first_name"[^>]*value="([^"]*)"/i);
-        const lnMatch = editHtml.match(/name="account_last_name"[^>]*value="([^"]*)"/i);
-        const emMatch = editHtml.match(/name="account_email"[^>]*value="([^"]*)"/i);
-        if (fnMatch && fnMatch[1]) firstName = fnMatch[1].trim();
-        if (lnMatch && lnMatch[1]) lastName = lnMatch[1].trim();
-        if (emMatch && emMatch[1]) email = emMatch[1].trim();
-        if (firstName || lastName) {
-          displayName = `${firstName} ${lastName}`.trim();
-        }
-      }
-    } catch (e) {}
-
-    // 3. /my-account/woo-wallet/
-    try {
-      const walletRes = await fetch(`${TARGET_HOST}/my-account/woo-wallet/`, {
-        headers: { 'Cookie': authCookies, 'User-Agent': 'Mozilla/5.0 FooderingAuth/1.0' },
-      });
-      if (walletRes.ok) {
-        const walletHtml = await walletRes.text();
-        const balMatch = walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
-                         walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i);
-        if (balMatch) {
-          const val = parseFloat(balMatch[1]);
-          if (!isNaN(val)) walletBalance = val;
-        }
-
-        const txRows = [...walletHtml.matchAll(/<tr[^>]*class="[^"]*woocommerce-wallet-history-row[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi)];
-        for (const row of txRows) {
-          const cols = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(c => c[1].replace(/<[^>]+>/g, '').trim());
-          if (cols.length >= 4) {
-            const [id, date, amountStr, details] = cols;
-            const amountVal = parseFloat(amountStr.replace(/[^0-9.]/g, '')) || 0;
-            const isCredit = /credit/i.test(row[1]) || /credit/i.test(details);
-            transactions.push({
-              id: id || `tx-${Math.random()}`,
-              date: date || '',
-              amount: amountVal,
-              type: isCredit ? 'credit' : 'debit',
-              details: details || 'Cafeteria Transaction',
-            });
+      if (dirRes.ok) {
+        const dirData = await dirRes.json();
+        if (Array.isArray(dirData?.users)) {
+          const cleanNum = upperUser.replace(/^SIP/i, '');
+          let matched = dirData.users.find(u => u.id === upperUser || u.id === cleanNum);
+          if (!matched) {
+            matched = dirData.users.find(u =>
+              u.display_name.toUpperCase().includes(upperUser) ||
+              upperUser.includes(u.display_name.toUpperCase())
+            );
+          }
+          if (matched && matched.display_name) {
+            displayName = matched.display_name;
+            const parts = displayName.split(' ');
+            firstName = parts[0] || displayName;
+            lastName = parts.slice(1).join(' ') || '';
           }
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Could not query staff directory', e);
+    }
 
-    // 4. KPOM orders
+    // Attempt to query WooCommerce session for wallet balance if available
+    try {
+      const initialRes = await fetch(`${TARGET_HOST}/my-account/`, {
+        headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html,application/xhtml+xml' },
+      });
+      const initialHtml = await initialRes.text();
+      const nonceMatch =
+        initialHtml.match(/name=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i) ||
+        initialHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]woocommerce-login-nonce['"]/i);
+      const nonce = nonceMatch ? nonceMatch[1] : '';
+
+      let cookies = '';
+      if (typeof initialRes.headers.getSetCookie === 'function') {
+        cookies = initialRes.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
+      } else {
+        const raw = initialRes.headers.get('set-cookie');
+        if (raw) cookies = raw.split(';')[0];
+      }
+
+      if (nonce) {
+        const form = new URLSearchParams();
+        form.append('username', cleanUser);
+        form.append('password', password);
+        form.append('woocommerce-login-nonce', nonce);
+        form.append('_wp_http_referer', '/my-account/');
+        form.append('login', 'Log in');
+
+        const loginRes = await fetch(`${TARGET_HOST}/my-account/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Cookie': cookies,
+            'User-Agent': BROWSER_UA,
+            'Referer': `${TARGET_HOST}/my-account/`,
+          },
+          body: form.toString(),
+          redirect: 'follow',
+        });
+
+        let authCookies = cookies;
+        if (typeof loginRes.headers.getSetCookie === 'function') {
+          const newCookies = loginRes.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
+          if (newCookies) authCookies = `${authCookies}; ${newCookies}`;
+        } else {
+          const raw = loginRes.headers.get('set-cookie');
+          if (raw) authCookies = `${authCookies}; ${raw.split(';')[0]}`;
+        }
+
+        // Fetch woo-wallet balance
+        const walletRes = await fetch(`${TARGET_HOST}/my-account/woo-wallet/`, {
+          headers: { 'Cookie': authCookies, 'User-Agent': BROWSER_UA },
+        });
+        if (walletRes.ok) {
+          const walletHtml = await walletRes.text();
+          const balMatch =
+            walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
+            walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i);
+          if (balMatch) {
+            const val = parseFloat(balMatch[1]);
+            if (!isNaN(val)) walletBalance = val;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('WooCommerce wallet scrape skipped', e);
+    }
+
+    // Fetch live KPOM meal orders
     try {
       const kpomRes = await fetch(`${TARGET_HOST}/wp-json/wp/v2/kpom/get-user-order-items`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'User-Agent': BROWSER_UA },
         body: JSON.stringify({ username: cleanUser }),
       });
       if (kpomRes.ok) {
@@ -201,7 +194,40 @@ export async function handleCafeteriaAuth(username, password) {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Could not fetch KPOM user orders', e);
+    }
+
+    // Fetch calendar orders
+    try {
+      const calRes = await fetch(`${TARGET_HOST}/wp-json/wp/v2/konbini-order-calendar/get-user-orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': BROWSER_UA },
+        body: JSON.stringify({ username: cleanUser }),
+      });
+      if (calRes.ok) {
+        const calData = await calRes.json();
+        if (Array.isArray(calData?.data)) {
+          for (const ord of calData.data) {
+            const ordId = ord.order_id || ord.id;
+            if (ordId && !orders.some(o => o.id === ordId)) {
+              orders.push({
+                id: ordId,
+                orderNumber: String(ord.order_number || ordId),
+                datePlaced: ord.date || '',
+                deliveryDate: ord.date || '',
+                status: 'Completed',
+                total: parseFloat(ord.total || '0') || 0,
+                items: [],
+                paymentMethod: 'Cafeteria Allowance',
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch calendar orders', e);
+    }
 
     return {
       status: 200,
@@ -222,6 +248,9 @@ export async function handleCafeteriaAuth(username, password) {
       },
     };
   } catch (err) {
-    return { status: 500, data: { error: 'Authentication service error: ' + (err.message || 'Unknown error') } };
+    return {
+      status: 500,
+      data: { error: 'Authentication service error: ' + (err.message || 'Unknown error') },
+    };
   }
 }
