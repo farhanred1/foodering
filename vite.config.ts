@@ -1,9 +1,62 @@
-import { defineConfig } from 'vite';
+import { defineConfig, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { handleCafeteriaAuth } from './src/services/authHandler.js';
+
+function cafeteriaAuthPlugin(): Plugin {
+  return {
+    name: 'cafeteria-auth-plugin',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url === '/api/auth' && req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', async () => {
+            try {
+              const { username, password } = JSON.parse(body || '{}');
+              const result = await handleCafeteriaAuth(username, password);
+              res.statusCode = result.status;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(result.data));
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message || 'Auth internal error' }));
+            }
+          });
+          return;
+        }
+        next();
+      });
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url === '/api/auth' && req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', async () => {
+            try {
+              const { username, password } = JSON.parse(body || '{}');
+              const result = await handleCafeteriaAuth(username, password);
+              res.statusCode = result.status;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(result.data));
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message || 'Auth internal error' }));
+            }
+          });
+          return;
+        }
+        next();
+      });
+    }
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), cafeteriaAuthPlugin()],
   base: './',
   server: {
     host: '0.0.0.0',

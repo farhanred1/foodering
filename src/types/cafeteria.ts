@@ -67,6 +67,7 @@ export interface UserSession {
   lastName?: string;
   walletBalance?: number;
   walletTransactions?: WalletTransaction[];
+  orders?: UserOrder[];
 }
 
 export interface CheckoutResult {
