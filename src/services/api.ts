@@ -4,13 +4,22 @@ import snapshotData from '../data/menuSnapshot.json';
 const isDev = import.meta.env.DEV;
 const API_BASE = isDev ? '/api' : 'https://ssip-cafeteria.whew.life';
 
-export function getAuthWorkerUrl(): string {
-  return (
+export function getAuthWorkerUrls(): string[] {
+  const custom =
     import.meta.env.VITE_AUTH_WORKER_URL ||
     localStorage.getItem('ssip_auth_worker_url') ||
-    sessionStorage.getItem('ssip_auth_worker_url') ||
-    ''
-  );
+    sessionStorage.getItem('ssip_auth_worker_url');
+  if (custom && custom.trim()) {
+    return [custom.trim()];
+  }
+  return [
+    'https://ssip-cafeteria-auth.farhanreduan911.workers.dev',
+    'https://black-silence-86cb.farhanreduan911.workers.dev'
+  ];
+}
+
+export function getAuthWorkerUrl(): string {
+  return getAuthWorkerUrls()[0] || '';
 }
 
 export function setAuthWorkerUrl(url: string): void {
@@ -297,9 +306,9 @@ export const CafeteriaAPI = {
       throw new Error('Please enter both your Employee ID / Username and Password.');
     }
 
-    // 1. If Cloudflare Auth Worker is configured, authenticate via serverless edge
-    const workerUrl = getAuthWorkerUrl();
-    if (workerUrl) {
+    // 1. Authenticate via Cloudflare Edge Auth Worker
+    const workerUrls = getAuthWorkerUrls();
+    for (const workerUrl of workerUrls) {
       try {
         const cleanEndpoint = workerUrl.replace(/\/+$/, '');
         const workerRes = await fetch(`${cleanEndpoint}/api/auth`, {
@@ -324,7 +333,7 @@ export const CafeteriaAPI = {
         if (err.message && (err.message.includes('password') || err.message.includes('username') || err.message.includes('Incorrect') || err.message.includes('credentials'))) {
           throw err;
         }
-        console.warn('Auth Worker unreachable or error, falling back to direct/directory flow', err);
+        console.warn(`Auth Worker at ${workerUrl} unreachable or error, trying next`, err);
       }
     }
 
