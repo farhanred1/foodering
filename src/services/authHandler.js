@@ -43,6 +43,16 @@ export async function handleCafeteriaAuth(username, password) {
 
     const xmlText = await xmlRes.text();
 
+    if (xmlRes.status !== 200 || !xmlText.includes('<methodResponse>')) {
+      return {
+        status: 502,
+        data: {
+          success: false,
+          error: `Unable to connect to cafeteria server for authentication (HTTP ${xmlRes.status}).`
+        }
+      };
+    }
+
     if (xmlText.includes('<fault>')) {
       const faultMatch = xmlText.match(/<name>faultString<\/name>\s*<value>\s*<string>([^<]+)<\/string>/i);
       const faultMsg = faultMatch
@@ -51,9 +61,11 @@ export async function handleCafeteriaAuth(username, password) {
       return { status: 401, data: { success: false, error: faultMsg } };
     }
 
-    if (!xmlText.includes('<methodResponse>') || !xmlText.includes('isAdmin')) {
-      // If XML-RPC is unavailable or gave non-XML response, try fallback
-      console.warn('Unexpected XML-RPC response, verifying via staff portal...');
+    if (!xmlText.includes('<params>')) {
+      return {
+        status: 401,
+        data: { success: false, error: 'Authentication failed. Please check your staff ID and password.' }
+      };
     }
 
     // 2. Staff is authenticated! Now retrieve authentic profile & orders

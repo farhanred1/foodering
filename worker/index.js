@@ -126,6 +126,17 @@ export default {
 
         const xmlText = await xmlRes.text();
 
+        // If the server responded with an error or Wordfence block page (503)
+        if (xmlRes.status !== 200 || !xmlText.includes('<methodResponse>')) {
+          const isWf = xmlText.includes('Your access to this site has been limited');
+          return jsonResponse({
+            success: false,
+            error: isWf
+              ? 'Cafeteria security firewall is temporarily limiting external cloud access. Please use the office portal or try again.'
+              : `Unable to verify credentials with cafeteria server (HTTP ${xmlRes.status}).`
+          }, 502);
+        }
+
         // If credentials are invalid, WordPress returns faultCode 403
         if (xmlText.includes('<fault>')) {
           const faultMatch = xmlText.match(/<name>faultString<\/name>\s*<value>\s*<string>([^<]+)<\/string>/i);
@@ -133,6 +144,14 @@ export default {
             ? faultMatch[1].trim()
             : 'Incorrect username or password. Please verify your staff credentials.';
           return jsonResponse({ success: false, error: faultMsg }, 401);
+        }
+
+        // MUST contain <params> to be a genuine verified login!
+        if (!xmlText.includes('<params>')) {
+          return jsonResponse({
+            success: false,
+            error: 'Authentication failed. Please verify your employee ID and password.'
+          }, 401);
         }
 
         // Step B: Credentials verified! Retrieve staff profile, live wallet balance, and orders
