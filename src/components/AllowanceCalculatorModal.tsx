@@ -23,6 +23,7 @@ import {
   normalizeToIso
 } from '../utils/singaporeCalendar';
 import { useOrders } from '../context/OrdersContext';
+import { useAuth } from '../context/AuthContext';
 
 interface AllowanceCalculatorModalProps {
   isOpen: boolean;
@@ -33,6 +34,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
   isOpen,
   onClose
 }) => {
+  const { user } = useAuth();
   const { orders, walletBalance, walletTransactions } = useOrders();
   const cycles = useMemo(() => getAllowanceCycles(), []);
   const [selectedCycleId, setSelectedCycleId] = useState<string>(() => {
@@ -188,8 +190,8 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
               <span className="font-extrabold text-slate-900 text-sm block leading-tight">
                 Allowance & Balance Calculator
               </span>
-              <span className="text-[10px] text-slate-400 font-semibold">
-                Wallet, Leave & Food Orders Until 26th
+              <span className="text-[10px] text-slate-500 font-medium">
+                {user?.displayName ? `${user.displayName} • ` : ''}Wallet, Leave & Food Orders Until 26th
               </span>
             </div>
           </div>

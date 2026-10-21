@@ -36,14 +36,20 @@ export const Header: React.FC<HeaderProps> = () => {
             {user ? (
               <div className="flex items-center gap-1">
                 {/* User Dropdown / Logout */}
-                <div className="flex items-center gap-1 bg-slate-100 pl-2.5 pr-1.5 py-1 sm:py-1.5 rounded-full text-xs text-slate-700">
-                  <span className="font-semibold truncate max-w-[80px] sm:max-w-[120px] text-[11px] sm:text-xs">
-                    {user.firstName || user.displayName || user.username}
+                <div
+                  className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200/80 pl-2 pr-1.5 py-1 sm:py-1.5 rounded-full text-xs text-slate-700 transition-colors"
+                  title={`${user.displayName || user.username} (${user.username}) • ${user.email || ''}`}
+                >
+                  <div className="w-5 h-5 rounded-full bg-brand-700 text-white flex items-center justify-center text-[10px] font-extrabold shrink-0">
+                    {(user.firstName ? user.firstName[0] : (user.displayName ? user.displayName[0] : 'U')).toUpperCase()}
+                  </div>
+                  <span className="font-bold truncate max-w-[100px] sm:max-w-[180px] text-[11px] sm:text-xs">
+                    {user.displayName || user.firstName || user.username}
                   </span>
                   <button
                     onClick={logout}
                     title="Log Out"
-                    className="p-1 hover:bg-slate-200 rounded-full text-slate-500 hover:text-red-600 transition-colors"
+                    className="p-1 hover:bg-white rounded-full text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                   </button>

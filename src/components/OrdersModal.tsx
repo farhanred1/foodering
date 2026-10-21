@@ -1,5 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Wallet, Clock, CheckCircle2, ChevronDown, ChevronUp, Calendar, ArrowDownRight, User, AlertCircle, ShoppingBag, RefreshCw } from 'lucide-react';
+import {
+  X,
+  Wallet,
+  Clock,
+  CheckCircle2,
+  Calendar,
+  User,
+  ShoppingBag,
+  RefreshCw,
+  Building,
+  Mail,
+  Phone,
+  ShieldCheck,
+  CreditCard,
+  Receipt
+} from 'lucide-react';
 import { useOrders } from '../context/OrdersContext';
 import { useAuth } from '../context/AuthContext';
 import { UserOrder } from '../types/cafeteria';
@@ -49,7 +64,7 @@ function formatDateLabel(dateStr?: string): string {
     const [_, y, m, d] = isoMatch;
     const dateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
     return dateObj.toLocaleDateString('en-US', {
-      weekday: 'long',
+      weekday: 'short',
       month: 'short',
       day: 'numeric',
       year: 'numeric'
@@ -58,7 +73,7 @@ function formatDateLabel(dateStr?: string): string {
   const parsed = new Date(dateStr);
   if (!isNaN(parsed.getTime())) {
     return parsed.toLocaleDateString('en-US', {
-      weekday: 'long',
+      weekday: 'short',
       month: 'short',
       day: 'numeric',
       year: 'numeric'
@@ -70,7 +85,7 @@ function formatDateLabel(dateStr?: string): string {
 export const OrdersModal: React.FC = () => {
   const { orders, isOrdersOpen, setIsOrdersOpen, walletBalance, walletTransactions, refreshOrders } = useOrders();
   const { user } = useAuth();
-  const [showPastHistory, setShowPastHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState<'orders' | 'wallet' | 'profile'>('orders');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const todayIso = useMemo(() => getTodayIso(), []);
@@ -83,7 +98,6 @@ export const OrdersModal: React.FC = () => {
     });
   }, []);
 
-  // Auto-refresh upon opening modal
   useEffect(() => {
     if (isOrdersOpen) {
       refreshOrders();
@@ -93,7 +107,7 @@ export const OrdersModal: React.FC = () => {
   const handleManualRefresh = () => {
     setIsRefreshing(true);
     refreshOrders();
-    setTimeout(() => setIsRefreshing(false), 500);
+    setTimeout(() => setIsRefreshing(false), 600);
   };
 
   const { todayOrders, upcomingOrders, pastOrders } = useMemo(() => {
@@ -108,14 +122,12 @@ export const OrdersModal: React.FC = () => {
       else past.push(o);
     });
 
-    // Upcoming days increasing: next day -> next next days (ascending)
     upcoming.sort((a, b) => {
       const dateA = normalizeToIso(a.mealDate) || normalizeToIso(a.datePlaced) || '';
       const dateB = normalizeToIso(b.mealDate) || normalizeToIso(b.datePlaced) || '';
       return dateA.localeCompare(dateB);
     });
 
-    // Past orders descending: most recent first
     past.sort((a, b) => {
       const dateA = normalizeToIso(a.mealDate) || normalizeToIso(a.datePlaced) || '';
       const dateB = normalizeToIso(b.mealDate) || normalizeToIso(b.datePlaced) || '';
@@ -128,42 +140,42 @@ export const OrdersModal: React.FC = () => {
   if (!isOrdersOpen || !user) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4">
       <div
         className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
         onClick={() => setIsOrdersOpen(false)}
       />
 
-      <div className="relative bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+      <div className="relative bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col">
         
-        {/* Header */}
-        <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+        {/* Header with User Info */}
+        <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-md shadow-emerald-600/20">
-              <Wallet className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-700 via-brand-600 to-emerald-500 text-white flex items-center justify-center font-black shadow-md shadow-brand-700/20 text-sm">
+              {(user.firstName ? user.firstName[0] : (user.displayName ? user.displayName[0] : 'U')).toUpperCase()}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-slate-900 text-base sm:text-lg">
-                  Cafeteria Wallet & Orders
+                <h3 className="font-extrabold text-slate-900 text-base sm:text-lg leading-tight">
+                  {user.displayName || user.firstName || user.username}
                 </h3>
-                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                  {user?.username || 'Employee'}
+                <span className="bg-brand-100 text-brand-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  {user.userId ? `#${user.userId}` : user.username}
                 </span>
               </div>
-              <p className="text-xs text-slate-500">
-                {user?.displayName || user?.username || 'Employee'}
+              <p className="text-xs text-slate-500 font-medium">
+                {user.company || 'Shimano (Singapore) Pte Ltd'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               onClick={handleManualRefresh}
-              className="p-2 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-full transition-all cursor-pointer"
+              className="p-2 text-slate-400 hover:text-brand-700 hover:bg-brand-50 rounded-full transition-all cursor-pointer"
               title="Refresh wallet balance & order status"
             >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-emerald-600' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-brand-600' : ''}`} />
             </button>
             <button
               onClick={() => setIsOrdersOpen(false)}
@@ -174,276 +186,394 @@ export const OrdersModal: React.FC = () => {
           </div>
         </div>
 
-        {/* Modal Scrollable Body */}
-        <div className="p-5 flex-1 overflow-y-auto space-y-5">
-          
-          {/* 1. Big Prominent Wallet Balance Card */}
-          <div className="relative overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-xl shadow-emerald-700/20">
-            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-white/10 rounded-full blur-xl pointer-events-none" />
-            
-            <div className="flex items-center justify-between text-xs text-emerald-100 mb-2 font-semibold">
-              <div className="flex items-center gap-1.5">
-                <Wallet className="w-3.5 h-3.5 text-emerald-300" />
-                <span>Shimano Konbini Cafeteria Wallet</span>
-              </div>
-              <span className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[11px] font-bold">
-                Active
+        {/* Tab Navigation */}
+        <div className="flex items-center border-b border-slate-200 bg-white px-3 sm:px-5 shrink-0 gap-1 sm:gap-2">
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`flex items-center gap-1.5 py-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+              activeTab === 'orders'
+                ? 'border-brand-600 text-brand-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Receipt className="w-3.5 h-3.5" />
+            <span>My Orders</span>
+            {orders.length > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                activeTab === 'orders' ? 'bg-brand-100 text-brand-800' : 'bg-slate-100 text-slate-600'
+              }`}>
+                {orders.length}
               </span>
-            </div>
-
-            <div className="my-2">
-              <span className="text-[11px] uppercase tracking-wider text-emerald-200 font-bold block mb-1">
-                Current Wallet Balance
-              </span>
-              <div className="text-4xl sm:text-5xl font-black tracking-tight">
-                ${walletBalance.toFixed(2)}
-              </div>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-white/15 flex items-center justify-between text-xs text-emerald-100">
-              <div>
-                <span className="text-white/60 block text-[10px] uppercase font-bold">Account ID</span>
-                <span className="font-bold text-white tracking-wide">{user?.username || 'Employee'}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-white/60 block text-[10px] uppercase font-bold">Employee</span>
-                <span className="font-bold text-white truncate max-w-[190px] block">
-                  {user?.displayName || user?.username || 'Employee'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* 2. TODAY'S FOOD ORDERS */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Today's Lunch Order</span>
-                <span className="text-xs font-normal text-slate-400">({todayLabel})</span>
-              </h4>
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                {todayOrders.length} {todayOrders.length === 1 ? 'Meal' : 'Meals'}
-              </span>
-            </div>
-
-            {todayOrders.length === 0 ? (
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center text-slate-500 text-xs">
-                No orders placed for today yet.
-              </div>
-            ) : (
-              todayOrders.map((order) => (
-                <div
-                  key={order.id}
-                  className="bg-white rounded-2xl border-2 border-emerald-500/30 p-4 shadow-sm space-y-3 relative overflow-hidden"
-                >
-                  <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-extrabold px-3 py-0.5 rounded-bl-xl uppercase tracking-wider">
-                    Today
-                  </div>
-
-                  <div className="flex items-center justify-between pr-16">
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-slate-900 text-sm">
-                        Order #{order.orderNumber}
-                      </span>
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>{order.status}</span>
-                      </span>
-                    </div>
-
-                    <span className="text-sm font-black text-brand-700">
-                      ${order.total.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* Food Items */}
-                  <div className="bg-slate-50 rounded-xl p-3 divide-y divide-slate-100 text-xs">
-                    {order.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between py-1.5 first:pt-0 last:pb-0">
-                        <span className="text-slate-800 font-semibold">
-                          <span className="font-extrabold text-brand-700 mr-2">{item.quantity}×</span>
-                          {item.name}
-                        </span>
-                        {item.price > 0 && (
-                          <span className="font-bold text-slate-700">
-                            ${(item.price * item.quantity).toFixed(2)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="font-semibold text-slate-700">{formatDateLabel(order.mealDate || order.datePlaced)}</span>
-                    </span>
-                    <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 text-[10px]">
-                      Paid via Konbini Wallet
-                    </span>
-                  </div>
-                </div>
-              ))
             )}
-          </div>
+          </button>
 
-          {/* 3. UPCOMING DAYS ORDERS (October 16 onwards) */}
-          <div className="space-y-3 pt-1">
-            <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-brand-600" />
-                <span>Upcoming Days Pre-Orders</span>
-              </h4>
-              {upcomingOrders.length > 0 && (
-                <span className="text-xs font-bold text-brand-700 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-full">
-                  {upcomingOrders.length} {upcomingOrders.length === 1 ? 'Order' : 'Orders'}
-                </span>
-              )}
-            </div>
+          <button
+            onClick={() => setActiveTab('wallet')}
+            className={`flex items-center gap-1.5 py-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+              activeTab === 'wallet'
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Wallet className="w-3.5 h-3.5" />
+            <span>Cafeteria Wallet</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full font-extrabold bg-emerald-100 text-emerald-800">
+              ${walletBalance.toFixed(2)}
+            </span>
+          </button>
 
-            {upcomingOrders.length === 0 ? (
-              <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-5 text-center text-slate-400">
-                <ShoppingBag className="w-7 h-7 mx-auto mb-1.5 text-slate-300" />
-                <p className="font-bold text-slate-700 text-xs">No upcoming pre-orders yet</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Select your meals from tomorrow or next week on the menu to pre-order your lunch in advance.
-                </p>
-              </div>
-            ) : (
-              upcomingOrders.map((order) => (
-                <div
-                  key={order.id}
-                  className="bg-white rounded-2xl border border-brand-200 p-4 shadow-xs space-y-3 hover:border-brand-400 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-[11px] font-bold text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded-full border border-brand-100 uppercase tracking-wider">
-                        📅 {formatDateLabel(order.mealDate || order.datePlaced)}
-                      </span>
-                    </div>
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`flex items-center gap-1.5 py-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+              activeTab === 'profile'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>Staff Profile</span>
+          </button>
+        </div>
 
-                    <span className="text-sm font-extrabold text-brand-700">
-                      ${order.total.toFixed(2)}
+        {/* Modal Scrollable Body */}
+        <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4">
+          
+          {/* TAB 1: ORDERS & MEALS */}
+          {activeTab === 'orders' && (
+            <div className="space-y-4">
+              
+              {/* Today's Food Order */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Today's Meal Order</span>
+                    <span className="text-xs font-normal text-slate-400">({todayLabel})</span>
+                  </h4>
+                  {todayOrders.length > 0 && (
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                      {todayOrders.length} {todayOrders.length === 1 ? 'Meal' : 'Meals'}
                     </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="font-black text-slate-900 text-xs">
-                      Order #{order.orderNumber}
-                    </span>
-                    <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                      <Clock className="w-3 h-3" />
-                      <span>{order.status || 'Confirmed'}</span>
-                    </span>
-                  </div>
-
-                  {/* Food Items */}
-                  <div className="bg-slate-50 rounded-xl p-3 divide-y divide-slate-100 text-xs">
-                    {order.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between py-1.5 first:pt-0 last:pb-0">
-                        <span className="text-slate-800 font-semibold">
-                          <span className="font-bold text-brand-700 mr-2">{item.quantity}×</span>
-                          {item.name}
-                        </span>
-                        {item.price > 0 && (
-                          <span className="font-bold text-slate-700">
-                            ${(item.price * item.quantity).toFixed(2)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {order.customerNote && (
-                    <p className="text-[11px] text-slate-500 italic bg-amber-50/60 p-2 rounded-lg border border-amber-100">
-                      Kitchen note: "{order.customerNote}"
-                    </p>
                   )}
                 </div>
-              ))
-            )}
-          </div>
 
-          {/* 4. PAST ORDERS & WALLET DEDUCTIONS (COLLAPSIBLE) */}
-          <div className="pt-2 border-t border-slate-200">
-            <button
-              onClick={() => setShowPastHistory(!showPastHistory)}
-              className="w-full flex items-center justify-between p-3 bg-slate-100 hover:bg-slate-200 rounded-2xl text-xs font-bold text-slate-700 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-slate-500" />
-                <span>Past Canteen Orders & Wallet Deductions ({pastOrders.length} previous meals)</span>
-              </div>
-              {showPastHistory ? (
-                <ChevronUp className="w-4 h-4 text-slate-500" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-slate-500" />
-              )}
-            </button>
-
-            {showPastHistory && (
-              <div className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
-                
-                {/* Past Orders List */}
-                <div className="space-y-2.5">
-                  <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                    Previous Days Meal History
-                  </h5>
-                  {pastOrders.map((order) => (
+                {todayOrders.length === 0 ? (
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 text-center text-slate-500 text-xs">
+                    No orders scheduled for today yet.
+                  </div>
+                ) : (
+                  todayOrders.map((order) => (
                     <div
                       key={order.id}
-                      className="bg-white rounded-xl border border-slate-200/80 p-3 text-xs space-y-1.5"
+                      className="bg-white rounded-2xl border-2 border-emerald-500/40 p-4 shadow-xs space-y-2.5 relative overflow-hidden"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800">
-                          Order #{order.orderNumber} • <span className="text-slate-500 font-normal">{order.datePlaced}</span>
-                        </span>
-                        <span className="font-extrabold text-slate-900">
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-900 text-sm">
+                            Order #{order.orderNumber}
+                          </span>
+                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>{order.status || 'Confirmed'}</span>
+                          </span>
+                        </div>
+                        <span className="text-sm font-black text-brand-700">
                           ${order.total.toFixed(2)}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-600">
-                        {order.items.map(i => `${i.name} (${i.quantity}x)`).join(', ')}
+
+                      <div className="bg-slate-50 rounded-xl p-2.5 divide-y divide-slate-100 text-xs">
+                        {order.items.map((item, idx) => (
+                          <div key={idx} className="flex justify-between py-1 first:pt-0 last:pb-0">
+                            <span className="text-slate-800 font-semibold">
+                              <span className="font-extrabold text-brand-700 mr-2">{item.quantity}×</span>
+                              {item.name}
+                            </span>
+                            {item.price > 0 && (
+                              <span className="font-bold text-slate-700">
+                                ${(item.price * item.quantity).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                        <span className="flex items-center gap-1.5 font-medium">
+                          <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{formatDateLabel(order.mealDate || order.datePlaced)}</span>
+                        </span>
+                        <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 text-[10px]">
+                          Paid via Cafeteria Allowance
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Upcoming Days Pre-Orders */}
+              {upcomingOrders.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-brand-600" />
+                    <span>Upcoming Pre-Orders ({upcomingOrders.length})</span>
+                  </h4>
+                  {upcomingOrders.map((order) => (
+                    <div
+                      key={order.id}
+                      className="bg-white rounded-2xl border border-brand-200 p-3.5 shadow-xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-100 uppercase tracking-wider">
+                          📅 {formatDateLabel(order.mealDate || order.datePlaced)}
+                        </span>
+                        <span className="text-xs font-black text-brand-700">
+                          ${order.total.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="text-xs font-bold text-slate-900">
+                        Order #{order.orderNumber} • <span className="text-amber-600 font-semibold">{order.status || 'Confirmed'}</span>
+                      </div>
+                      <div className="bg-slate-50 rounded-xl p-2.5 text-xs text-slate-700">
+                        {order.items.map((i, idx) => (
+                          <div key={idx} className="flex justify-between py-0.5">
+                            <span>{i.quantity}× {i.name}</span>
+                            <span>${(i.price * i.quantity).toFixed(2)}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
                 </div>
+              )}
 
-                {/* Machine Deduction Logs */}
-                <div className="space-y-2 pt-2">
-                  <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                    Canteen Machine Deductions (Terminal 02)
-                  </h5>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+              {/* Past Canteen Orders */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-slate-500" />
+                    <span>Past Canteen Orders</span>
+                  </h4>
+                  <span className="text-[11px] text-slate-400 font-bold">
+                    {pastOrders.length} Completed
+                  </span>
+                </div>
+
+                {pastOrders.length === 0 ? (
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-center text-slate-400 text-xs">
+                    <ShoppingBag className="w-6 h-6 mx-auto mb-1 text-slate-300" />
+                    <span>No previous order records found.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {pastOrders.map((order) => (
+                      <div
+                        key={order.id}
+                        className="bg-white rounded-2xl border border-slate-200/90 p-3.5 text-xs space-y-2 shadow-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-extrabold text-slate-900 text-xs">
+                              Order #{order.orderNumber}
+                            </span>
+                            <span className="text-slate-400 ml-2 text-[11px]">
+                              {formatDateLabel(order.mealDate || order.datePlaced)}
+                            </span>
+                          </div>
+                          <span className="font-extrabold text-slate-900">
+                            ${order.total.toFixed(2)}
+                          </span>
+                        </div>
+
+                        {order.items && order.items.length > 0 && (
+                          <div className="bg-slate-50 rounded-lg p-2 text-[11px] text-slate-600 divide-y divide-slate-100">
+                            {order.items.map((it, iIdx) => (
+                              <div key={iIdx} className="flex justify-between py-0.5 first:pt-0 last:pb-0">
+                                <span>{it.quantity}× {it.name}</span>
+                                {it.price > 0 && <span>${(it.price * it.quantity).toFixed(2)}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>{order.status || 'Completed'}</span>
+                          </span>
+                          <span>Payment: {order.paymentMethod || 'Cafeteria Allowance'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 2: KONBINI WALLET & TRANSACTIONS */}
+          {activeTab === 'wallet' && (
+            <div className="space-y-4">
+              
+              {/* Prominent Wallet Balance Card */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-xl shadow-emerald-700/20">
+                <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-white/10 rounded-full blur-xl pointer-events-none" />
+                
+                <div className="flex items-center justify-between text-xs text-emerald-100 mb-2 font-semibold">
+                  <div className="flex items-center gap-1.5">
+                    <Wallet className="w-4 h-4 text-emerald-300" />
+                    <span>Shimano Konbini Cafeteria Wallet</span>
+                  </div>
+                  <span className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[11px] font-bold">
+                    Active Verified
+                  </span>
+                </div>
+
+                <div className="my-2">
+                  <span className="text-[11px] uppercase tracking-wider text-emerald-200 font-bold block mb-1">
+                    Live Current Balance
+                  </span>
+                  <div className="text-4xl sm:text-5xl font-black tracking-tight">
+                    ${walletBalance.toFixed(2)}
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3.5 border-t border-white/15 flex items-center justify-between text-xs text-emerald-100">
+                  <div>
+                    <span className="text-white/60 block text-[10px] uppercase font-bold">Staff ID</span>
+                    <span className="font-bold text-white tracking-wide">{user.userId ? `#${user.userId}` : user.username}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-white/60 block text-[10px] uppercase font-bold">Monthly Cycle Allowance</span>
+                    <span className="font-bold text-white tracking-wide">$100.00 / Cycle</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Transactions History Table */}
+              <div className="space-y-2">
+                <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-emerald-600" />
+                  <span>Wallet Activity & Deductions ({walletTransactions.length})</span>
+                </h4>
+
+                {walletTransactions.length === 0 ? (
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-center text-slate-400 text-xs">
+                    No individual wallet deduction records logged yet.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto">
                     {walletTransactions.map((tx) => (
                       <div
                         key={tx.id}
-                        className="bg-slate-50 rounded-xl p-2.5 flex items-center justify-between text-xs"
+                        className="bg-white rounded-xl border border-slate-200/80 p-3 flex items-center justify-between text-xs"
                       >
                         <div>
-                          <p className="font-semibold text-slate-700 text-[11px]">{tx.details}</p>
+                          <p className="font-bold text-slate-800 text-[11px]">{tx.details}</p>
                           <p className="text-[10px] text-slate-400">{tx.date}</p>
                         </div>
-                        <span className="font-bold text-red-600 text-xs">
-                          -${tx.amount.toFixed(2)}
+                        <span className={`font-black text-xs ${
+                          tx.type === 'credit' ? 'text-emerald-600' : 'text-rose-600'
+                        }`}>
+                          {tx.type === 'credit' ? '+' : '-'}${tx.amount.toFixed(2)}
                         </span>
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 3: STAFF PROFILE & ACCOUNT DETAILS */}
+          {activeTab === 'profile' && (
+            <div className="space-y-3.5">
+              
+              <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-4 flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-xl font-black text-indigo-300">
+                  {(user.firstName ? user.firstName[0] : (user.displayName ? user.displayName[0] : 'U')).toUpperCase()}
+                </div>
+                <div>
+                  <h4 className="font-black text-white text-base">
+                    {user.displayName || user.username}
+                  </h4>
+                  <p className="text-xs text-indigo-200">
+                    {user.company || 'Shimano (Singapore) Pte Ltd'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Account Data Grid */}
+              <div className="bg-white rounded-2xl border border-slate-200/90 divide-y divide-slate-100 text-xs">
+                
+                <div className="p-3 flex items-center justify-between">
+                  <span className="text-slate-500 flex items-center gap-2">
+                    <User className="w-4 h-4 text-slate-400" />
+                    <span>Full Legal Name</span>
+                  </span>
+                  <span className="font-bold text-slate-900">{user.displayName || user.username}</span>
+                </div>
+
+                <div className="p-3 flex items-center justify-between">
+                  <span className="text-slate-500 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <span>Employee / Staff ID</span>
+                  </span>
+                  <span className="font-bold text-slate-900">{user.userId ? `#${user.userId}` : user.username}</span>
+                </div>
+
+                <div className="p-3 flex items-center justify-between">
+                  <span className="text-slate-500 flex items-center gap-2">
+                    <Building className="w-4 h-4 text-slate-400" />
+                    <span>Company</span>
+                  </span>
+                  <span className="font-bold text-slate-900">{user.company || 'Shimano (Singapore) Pte Ltd'}</span>
+                </div>
+
+                <div className="p-3 flex items-center justify-between">
+                  <span className="text-slate-500 flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-slate-400" />
+                    <span>Email Address</span>
+                  </span>
+                  <span className="font-bold text-brand-700">{user.email || 'None on file'}</span>
+                </div>
+
+                {user.phone && (
+                  <div className="p-3 flex items-center justify-between">
+                    <span className="text-slate-500 flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-slate-400" />
+                      <span>Contact Phone</span>
+                    </span>
+                    <span className="font-bold text-slate-900">{user.phone}</span>
+                  </div>
+                )}
+
+                <div className="p-3 flex items-center justify-between">
+                  <span className="text-slate-500 flex items-center gap-2">
+                    <Wallet className="w-4 h-4 text-emerald-600" />
+                    <span>Current Wallet Balance</span>
+                  </span>
+                  <span className="font-black text-emerald-700 text-sm">${walletBalance.toFixed(2)}</span>
                 </div>
 
               </div>
-            )}
-          </div>
+
+            </div>
+          )}
 
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end">
+        <div className="p-3.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
+          <div className="text-[11px] text-slate-400 font-medium">
+            Live Synchronized with SSIP Cafeteria
+          </div>
           <button
             onClick={() => setIsOrdersOpen(false)}
-            className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-6 rounded-xl text-xs transition-colors"
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-xl text-xs transition-colors cursor-pointer"
           >
             Close
           </button>
