@@ -2,6 +2,44 @@ const TARGET_HOST = 'https://ssip-cafeteria.whew.life';
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+class CookieJar {
+  constructor() {
+    this.cookies = new Map();
+  }
+
+  setFromHeaders(headers) {
+    if (!headers) return;
+    let rawCookies = [];
+    if (typeof headers.getSetCookie === 'function') {
+      rawCookies = headers.getSetCookie();
+    } else if (headers.get && headers.get('set-cookie')) {
+      rawCookies = headers.get('set-cookie').split(/,(?=[^;]+=[^;]+)/);
+    }
+
+    for (const raw of rawCookies) {
+      const parts = raw.split(';')[0].trim();
+      const eqIdx = parts.indexOf('=');
+      if (eqIdx > 0) {
+        const key = parts.slice(0, eqIdx).trim();
+        const val = parts.slice(eqIdx + 1).trim();
+        if (val) {
+          this.cookies.set(key, val);
+        } else {
+          this.cookies.delete(key);
+        }
+      }
+    }
+  }
+
+  getCookieHeader() {
+    const list = [];
+    for (const [k, v] of this.cookies.entries()) {
+      list.push(`${k}=${v}`);
+    }
+    return list.join('; ');
+  }
+}
+
 function escapeXml(unsafe) {
   return String(unsafe).replace(/[<>&'"]/g, (c) => {
     switch (c) {
@@ -27,6 +65,16 @@ function parseXmlStruct(xml) {
   return result;
 }
 
+function extractPrice(str) {
+  if (!str) return 0;
+  const cleaned = str
+    .replace(/&#36;/g, '')
+    .replace(/&[a-z0-9#]+;/gi, '')
+    .replace(/<span[^>]*class="[^"]*currencySymbol[^"]*"[^>]*>[^<]*<\/span>/gi, '');
+  const m = cleaned.match(/([\d]+(?:\.[\d]+)?)/);
+  return m ? parseFloat(m[1]) : 0;
+}
+
 export async function handleCafeteriaAuth(username, password) {
   const cleanUser = (username || '').trim();
   if (!cleanUser || !password) {
@@ -34,8 +82,7 @@ export async function handleCafeteriaAuth(username, password) {
   }
 
   try {
-    // 1. Direct Credential Validation against WordPress Core XML-RPC wp.getProfile
-    const xmlPayload = `<?xml version="1.0"?>
+    const xmlProfilePayload = `<?xml version="1.0"?>
 <methodCall>
   <methodName>wp.getProfile</methodName>
   <params>
@@ -47,11 +94,8 @@ export async function handleCafeteriaAuth(username, password) {
 
     const xmlRes = await fetch(`${TARGET_HOST}/xmlrpc.php`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml',
-        'User-Agent': BROWSER_UA,
-      },
-      body: xmlPayload,
+      headers: { 'Content-Type': 'text/xml', 'User-Agent': BROWSER_UA },
+      body: xmlProfilePayload,
     });
 
     const xmlText = await xmlRes.text();
@@ -81,7 +125,6 @@ export async function handleCafeteriaAuth(username, password) {
       };
     }
 
-    // 2. Parse Authentic Profile
     const wpProfile = parseXmlStruct(xmlText);
     const upperUser = cleanUser.toUpperCase();
     const numericId = cleanUser.replace(/^SIP/i, '');
@@ -90,11 +133,13 @@ export async function handleCafeteriaAuth(username, password) {
     let firstName = wpProfile.first_name || (displayName ? displayName.split(' ')[0] : upperUser);
     let lastName = wpProfile.last_name || (displayName ? displayName.split(' ').slice(1).join(' ') : '');
     let email = wpProfile.email || `${cleanUser.toLowerCase()}@shimano.com.sg`;
+    let phone = '';
+    let company = 'Shimano (Singapore) Pte Ltd';
     let walletBalance = 100.0;
-    const orders = [];
     const transactions = [];
+    const orders = [];
 
-    // Query official staff directory for employee's full legal name
+    // Official Staff Directory Lookup
     try {
       const dirRes = await fetch(`${TARGET_HOST}/wp-json/wp/v2/asset_management/get-user-list`, {
         headers: { 'User-Agent': BROWSER_UA },
@@ -103,8 +148,8 @@ export async function handleCafeteriaAuth(username, password) {
         const dirData = await dirRes.json();
         if (Array.isArray(dirData?.users)) {
           let matched =
-            (wpProfile.user_id && dirData.users.find(u => u.id === wpProfile.user_id)) ||
-            dirData.users.find(u => u.id === cleanUser || u.id === numericId) ||
+            (wpProfile.user_id && dirData.users.find(u => String(u.id) === String(wpProfile.user_id))) ||
+            dirData.users.find(u => String(u.id) === cleanUser || String(u.id) === numericId) ||
             (wpProfile.display_name && dirData.users.find(u => u.display_name.toUpperCase() === wpProfile.display_name.toUpperCase())) ||
             (wpProfile.display_name && dirData.users.find(u => u.display_name.toUpperCase().includes(wpProfile.display_name.toUpperCase()))) ||
             dirData.users.find(u => u.display_name.toUpperCase().includes(upperUser)) ||
@@ -122,24 +167,18 @@ export async function handleCafeteriaAuth(username, password) {
       console.warn('Could not query staff directory', e);
     }
 
-    // 3. Attempt WooCommerce session login for live wallet & orders
+    // WooCommerce Session Login with CookieJar
+    const jar = new CookieJar();
     try {
       const initialRes = await fetch(`${TARGET_HOST}/my-account/`, {
         headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html,application/xhtml+xml' },
       });
+      jar.setFromHeaders(initialRes.headers);
       const initialHtml = await initialRes.text();
       const nonceMatch =
         initialHtml.match(/name=['"]woocommerce-login-nonce['"][^>]*value=['"]([^'"]+)['"]/i) ||
         initialHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]woocommerce-login-nonce['"]/i);
       const nonce = nonceMatch ? nonceMatch[1] : '';
-
-      let cookies = '';
-      if (typeof initialRes.headers.getSetCookie === 'function') {
-        cookies = initialRes.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
-      } else {
-        const raw = initialRes.headers.get('set-cookie');
-        if (raw) cookies = raw.split(';')[0];
-      }
 
       if (nonce) {
         const form = new URLSearchParams();
@@ -153,105 +192,182 @@ export async function handleCafeteriaAuth(username, password) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Cookie': cookies,
+            'Cookie': jar.getCookieHeader(),
             'User-Agent': BROWSER_UA,
             'Referer': `${TARGET_HOST}/my-account/`,
           },
           body: form.toString(),
-          redirect: 'follow',
+          redirect: 'manual',
         });
+        jar.setFromHeaders(loginRes.headers);
 
-        let authCookies = cookies;
-        if (typeof loginRes.headers.getSetCookie === 'function') {
-          const newCookies = loginRes.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
-          if (newCookies) authCookies = `${authCookies}; ${newCookies}`;
-        } else {
-          const raw = loginRes.headers.get('set-cookie');
-          if (raw) authCookies = `${authCookies}; ${raw.split(';')[0]}`;
-        }
-
-        // Fetch woo-wallet balance & transactions
-        const walletRes = await fetch(`${TARGET_HOST}/my-account/woo-wallet/`, {
-          headers: { 'Cookie': authCookies, 'User-Agent': BROWSER_UA },
+        const redirectLocation = loginRes.headers.get('location') || '/my-account/';
+        const targetUrl = redirectLocation.startsWith('http') ? redirectLocation : `${TARGET_HOST}${redirectLocation}`;
+        const dashboardRes = await fetch(targetUrl, {
+          headers: { 'Cookie': jar.getCookieHeader(), 'User-Agent': BROWSER_UA },
         });
-        if (walletRes.ok) {
-          const walletHtml = await walletRes.text();
-          const balMatch =
-            walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
-            walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi>(?:<span[^>]*>[^<]*<\/span>)?\s*([\d\.]+)/i) ||
-            walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i);
-          if (balMatch) {
-            const val = parseFloat(balMatch[1]);
-            if (!isNaN(val)) walletBalance = val;
+        jar.setFromHeaders(dashboardRes.headers);
+
+        // Scrape account details (first/last name, email)
+        try {
+          const editRes = await fetch(`${TARGET_HOST}/my-account/edit-account/`, {
+            headers: { 'Cookie': jar.getCookieHeader(), 'User-Agent': BROWSER_UA },
+          });
+          if (editRes.ok) {
+            const editHtml = await editRes.text();
+            const getField = (name) => {
+              const m = editHtml.match(new RegExp(`name=['"]${name}['"][^>]*value=['"]([^'"]*)['"]`, 'i')) ||
+                        editHtml.match(new RegExp(`value=['"]([^'"]*)['"][^>]*name=['"]${name}['"]`, 'i'));
+              return m ? m[1].trim() : '';
+            };
+            const accFirst = getField('account_first_name');
+            const accLast = getField('account_last_name');
+            const accDisplay = getField('account_display_name');
+            const accEmail = getField('account_email');
+            if (accDisplay) displayName = accDisplay;
+            if (accFirst) firstName = accFirst;
+            if (accLast) lastName = accLast;
+            if (accEmail) email = accEmail;
           }
+        } catch {}
 
-          const txRows = walletHtml.match(/<tr[^>]*class="[^"]*woo-wallet-transaction-row[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi) || [];
-          for (const row of txRows) {
-            const amountMatch = row.match(/class="[^"]*amount[^"]*"[^>]*>[\s\S]*?([\d\.]+)/i);
-            const dateMatch = row.match(/class="[^"]*date[^"]*"[^>]*>([^<]+)/i);
-            const typeMatch = row.match(/class="[^"]*type[^"]*"[^>]*>([^<]+)/i);
-            const descMatch = row.match(/class="[^"]*description[^"]*"[^>]*>([^<]+)/i);
-            if (amountMatch) {
-              transactions.push({
-                id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                amount: parseFloat(amountMatch[1]) || 0,
-                date: (dateMatch ? dateMatch[1] : '').trim(),
-                type: (typeMatch ? typeMatch[1] : 'debit').trim().toLowerCase(),
-                details: (descMatch ? descMatch[1] : 'Cafeteria Transaction').trim(),
-              });
+        // Scrape billing address (phone, company)
+        try {
+          const billingRes = await fetch(`${TARGET_HOST}/my-account/edit-address/billing/`, {
+            headers: { 'Cookie': jar.getCookieHeader(), 'User-Agent': BROWSER_UA },
+          });
+          if (billingRes.ok) {
+            const billHtml = await billingRes.text();
+            const getField = (name) => {
+              const m = billHtml.match(new RegExp(`name=['"]${name}['"][^>]*value=['"]([^'"]*)['"]`, 'i')) ||
+                        billHtml.match(new RegExp(`value=['"]([^'"]*)['"][^>]*name=['"]${name}['"]`, 'i'));
+              return m ? m[1].trim() : '';
+            };
+            const billPhone = getField('billing_phone');
+            const billComp = getField('billing_company');
+            if (billPhone) phone = billPhone;
+            if (billComp) company = billComp;
+          }
+        } catch {}
+
+        // Scrape woo-wallet balance & transactions
+        try {
+          const walletRes = await fetch(`${TARGET_HOST}/my-account/woo-wallet/`, {
+            headers: { 'Cookie': jar.getCookieHeader(), 'User-Agent': BROWSER_UA },
+          });
+          if (walletRes.ok) {
+            const walletHtml = await walletRes.text();
+            const balMatch =
+              walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
+              walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi>(?:<span[^>]*>[^<]*<\/span>)?\s*([\d\.]+)/i) ||
+              walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i) ||
+              walletHtml.match(/class="[^"]*woo-wallet-balance-amount[^"]*">[^<]*\$?([\d\.]+)/i);
+
+            if (balMatch) {
+              const val = parseFloat(balMatch[1]);
+              if (!isNaN(val)) walletBalance = val;
+            }
+
+            const txRows = walletHtml.match(/<tr[^>]*class="[^"]*woo-wallet-transaction-row[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi) || [];
+            for (const row of txRows) {
+              const amountMatch = row.match(/class="[^"]*amount[^"]*"[^>]*>[\s\S]*?([\d\.]+)/i);
+              const dateMatch = row.match(/class="[^"]*date[^"]*"[^>]*>([^<]+)/i);
+              const typeMatch = row.match(/class="[^"]*type[^"]*"[^>]*>([^<]+)/i);
+              const descMatch = row.match(/class="[^"]*description[^"]*"[^>]*>([^<]+)/i);
+              if (amountMatch) {
+                transactions.push({
+                  id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                  amount: parseFloat(amountMatch[1]) || 0,
+                  date: (dateMatch ? dateMatch[1] : '').trim(),
+                  type: (typeMatch ? typeMatch[1] : 'debit').trim().toLowerCase(),
+                  details: (descMatch ? descMatch[1] : 'Cafeteria Transaction').trim(),
+                });
+              }
             }
           }
-        }
+        } catch {}
 
-        // Fetch past orders from WooCommerce
-        const ordersRes = await fetch(`${TARGET_HOST}/my-account/orders/`, {
-          headers: { 'Cookie': authCookies, 'User-Agent': BROWSER_UA },
-        });
-        if (ordersRes.ok) {
-          const ordersHtml = await ordersRes.text();
-          const orderRows = ordersHtml.match(/<tr[^>]*class="[^"]*woocommerce-orders-table__row[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi) || [];
-          for (const row of orderRows) {
-            const numMatch = row.match(/href="[^"]*\/view-order\/(\d+)\/?"[^>]*>[\s\S]*?#?(\d+)/i) ||
-                             row.match(/data-title="Order"[^>]*>[\s\S]*?#?(\d+)/i);
-            const orderId = numMatch ? numMatch[1] : '';
-            const orderNumber = numMatch ? (numMatch[2] || numMatch[1]) : '';
-            const dateMatch = row.match(/<time[^>]*>([^<]+)<\/time>/i) ||
-                              row.match(/data-title="Date"[^>]*>[\s\S]*?<time[^>]*>([^<]+)<\/time>/i);
-            const datePlaced = dateMatch ? dateMatch[1].trim() : '';
-            const statusMatch = row.match(/data-title="Status"[^>]*>\s*([^<\n]+)/i);
-            const status = statusMatch ? statusMatch[1].trim() : 'Completed';
-            const totalMatch = row.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi>(?:<span[^>]*>[^<]*<\/span>)?\s*([\d\.]+)/i) ||
-                               row.match(/<\/span>\s*([\d\.]+)/i);
-            const total = totalMatch ? parseFloat(totalMatch[1]) : 0;
+        // Scrape past orders from WooCommerce
+        try {
+          const ordersRes = await fetch(`${TARGET_HOST}/my-account/orders/`, {
+            headers: { 'Cookie': jar.getCookieHeader(), 'User-Agent': BROWSER_UA },
+          });
+          if (ordersRes.ok) {
+            const ordersHtml = await ordersRes.text();
+            const orderRows = ordersHtml.match(/<tr[^>]*class="[^"]*woocommerce-orders-table__row[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi) || [];
+            for (const row of orderRows) {
+              const numMatch = row.match(/href="[^"]*\/view-order\/(\d+)\/?"[^>]*>[\s\S]*?#?(\d+)/i) ||
+                               row.match(/data-title="Order"[^>]*>[\s\S]*?#?(\d+)/i);
+              const orderId = numMatch ? numMatch[1] : '';
+              const orderNumber = numMatch ? (numMatch[2] || numMatch[1]) : '';
+              const dateMatch = row.match(/<time[^>]*>([^<]+)<\/time>/i) ||
+                                row.match(/data-title="Date"[^>]*>[\s\S]*?<time[^>]*>([^<]+)<\/time>/i);
+              const datePlaced = dateMatch ? dateMatch[1].trim() : '';
+              const statusMatch = row.match(/data-title="Status"[^>]*>\s*([^<\n]+)/i);
+              const status = statusMatch ? statusMatch[1].trim() : 'Completed';
+              const total = extractPrice(row);
 
-            if (orderId && !orders.some(o => String(o.id) === String(orderId))) {
-              orders.push({
-                id: orderId,
-                orderNumber: String(orderNumber || orderId),
-                datePlaced,
-                deliveryDate: datePlaced,
-                status,
-                total,
-                customerNote: '',
-                mealDate: datePlaced,
-                paymentMethod: 'Cafeteria Allowance',
-                items: [{
-                  id: 1,
-                  name: 'Cafeteria Meal Order',
-                  price: total,
-                  quantity: 1,
+              if (orderId && !orders.some(o => String(o.id) === String(orderId))) {
+                orders.push({
+                  id: orderId,
+                  orderNumber: String(orderNumber || orderId),
+                  datePlaced,
+                  deliveryDate: datePlaced,
+                  status,
+                  total,
+                  customerNote: '',
                   mealDate: datePlaced,
-                }],
-              });
+                  paymentMethod: 'Cafeteria Allowance',
+                  items: [{
+                    id: 1,
+                    name: 'Cafeteria Meal Order',
+                    price: total,
+                    quantity: 1,
+                    mealDate: datePlaced,
+                  }],
+                });
+              }
+            }
+
+            // Fetch details for top recent orders
+            const recentOrders = orders.slice(0, 5);
+            for (const ord of recentOrders) {
+              try {
+                const viewRes = await fetch(`${TARGET_HOST}/my-account/view-order/${ord.id}/`, {
+                  headers: { 'Cookie': jar.getCookieHeader(), 'User-Agent': BROWSER_UA },
+                });
+                if (viewRes.ok) {
+                  const viewHtml = await viewRes.text();
+                  const itemRows = viewHtml.match(/<tr[^>]*class="[^"]*woocommerce-table__line-item[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi) || [];
+                  if (itemRows.length > 0) {
+                    const detailedItems = [];
+                    for (const iRow of itemRows) {
+                      const nameM = iRow.match(/class="[^"]*product-name[^"]*"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i) ||
+                                    iRow.match(/class="[^"]*product-name[^"]*"[^>]*>\s*([^<\n]+)/i);
+                      const qtyM = iRow.match(/class="[^"]*product-quantity[^"]*"[^>]*>[\s\S]*?(\d+)/i) ||
+                                   iRow.match(/&times;\s*(\d+)/i);
+                      const p = extractPrice(iRow);
+                      detailedItems.push({
+                        id: Math.floor(Math.random() * 100000),
+                        name: nameM ? nameM[1].trim() : 'Meal Item',
+                        price: p,
+                        quantity: qtyM ? parseInt(qtyM[1], 10) : 1,
+                        mealDate: ord.datePlaced,
+                      });
+                    }
+                    if (detailedItems.length > 0) ord.items = detailedItems;
+                  }
+                }
+              } catch {}
             }
           }
-        }
+        } catch {}
       }
     } catch (e) {
       console.warn('WooCommerce scrape skipped', e);
     }
 
-    // 4. Fetch meal pre-orders from KPOM & Calendar
+    // Pre-orders from KPOM & Calendar
     const candidateIds = Array.from(new Set([
       cleanUser,
       wpProfile.user_id,
@@ -275,7 +391,7 @@ export async function handleCafeteriaAuth(username, password) {
               if (!orders.some(o => String(o.id) === String(ordId))) {
                 orders.push({
                   id: ordId,
-                  orderNumber: String(item.order_number || item.order_id || ''),
+                  orderNumber: String(item.order_number || ordId),
                   datePlaced: item.order_date || item.delivery_date || '',
                   deliveryDate: item.delivery_date || '',
                   status: item.status || 'Completed',
@@ -336,10 +452,12 @@ export async function handleCafeteriaAuth(username, password) {
         success: true,
         session: {
           isLoggedIn: true,
-          username: upperUser,
+          userId: wpProfile.user_id || numericId,
+          username: cleanUser,
           displayName,
           email,
-          phone: '',
+          phone,
+          company,
           firstName,
           lastName,
           walletBalance,

@@ -61,11 +61,13 @@ export interface UserSession {
   isLoggedIn: boolean;
   username: string;
   displayName: string;
+  userId?: string | number;
+  company?: string;
   email?: string;
   phone?: string;
   firstName?: string;
   lastName?: string;
-  walletBalance?: number | null;  // null = unavailable (balance API needs machine token)
+  walletBalance?: number;
   walletTransactions?: WalletTransaction[];
   orders?: UserOrder[];
 }
