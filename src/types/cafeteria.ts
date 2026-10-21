@@ -65,7 +65,7 @@ export interface UserSession {
   phone?: string;
   firstName?: string;
   lastName?: string;
-  walletBalance?: number;
+  walletBalance?: number | null;  // null = unavailable (balance API needs machine token)
   walletTransactions?: WalletTransaction[];
   orders?: UserOrder[];
 }

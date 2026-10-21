@@ -137,8 +137,11 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
     };
   }, [calendarDays]);
 
+  // Current wallet balance or default monthly cycle allowance ($100.00)
+  const currentWallet = walletBalance ?? 100.0;
+
   // User requirement 1: Allowance left = Current wallet balance minus leave days money
-  const allowanceLeft = parseFloat((walletBalance - leaveMoney).toFixed(2));
+  const allowanceLeft = parseFloat((currentWallet - leaveMoney).toFixed(2));
 
   // User requirement 2: Remaining balance = Current balance - leave days money - order food until 26th
   const remainingBalance = parseFloat((allowanceLeft - foodOrderedUntil26th).toFixed(2));
@@ -231,7 +234,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
               <p className="text-[10px] leading-relaxed text-indigo-900/90">
                 • <strong>Daily Rate</strong>: $100 ÷ {cycleDaysInfo.workingDays} working days = ${dailyRate.toFixed(2)}/day.
                 <br />
-                • <strong>Allowance Left</strong> = Current Wallet (${walletBalance.toFixed(2)}) − Leave Days Money.
+                • <strong>Allowance Left</strong> = Current Wallet (${currentWallet.toFixed(2)}) − Leave Days Money.
                 <br />
                 • <strong>Remaining Balance</strong> = Current Wallet − Leave Days Money − Food Ordered until 26th.
               </p>
@@ -270,7 +273,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
                 Current Wallet
               </span>
               <span className="text-xs sm:text-sm font-black text-slate-900">
-                ${walletBalance.toFixed(2)}
+                ${currentWallet.toFixed(2)}
               </span>
             </div>
 
@@ -487,7 +490,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
                   1. Allowance Left (Wallet − Leave)
                 </span>
                 <span className="text-[9px] text-indigo-200 bg-white/10 px-1.5 py-0.2 rounded-full">
-                  Wallet ${walletBalance.toFixed(2)} − Leave ${leaveMoney.toFixed(2)}
+                  Wallet ${currentWallet.toFixed(2)} − Leave ${leaveMoney.toFixed(2)}
                 </span>
               </div>
 
@@ -497,9 +500,9 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
                 </div>
                 <div className="text-right text-[10px] text-indigo-200">
                   {effectiveLeaveCount > 0 ? (
-                    <span>${walletBalance.toFixed(2)} − ${leaveMoney.toFixed(2)} ({effectiveLeaveCount}d leave)</span>
+                    <span>${currentWallet.toFixed(2)} − ${leaveMoney.toFixed(2)} ({effectiveLeaveCount}d leave)</span>
                   ) : (
-                    <span className="text-emerald-400 font-semibold">${walletBalance.toFixed(2)} (0 days leave taken)</span>
+                    <span className="text-emerald-400 font-semibold">${currentWallet.toFixed(2)} (0 days leave taken)</span>
                   )}
                 </div>
               </div>
@@ -540,7 +543,7 @@ export const AllowanceCalculatorModal: React.FC<AllowanceCalculatorModalProps> =
 
                 <div className="text-right text-[10px] space-y-0.5">
                   <div className="text-slate-300">
-                    Wallet: <span className="font-bold text-white">${walletBalance.toFixed(2)}</span>
+                    Wallet: <span className="font-bold text-white">${currentWallet.toFixed(2)}</span>
                   </div>
                   <div className="text-indigo-200">
                     Leave: <span className="font-bold text-indigo-300">-${leaveMoney.toFixed(2)}</span>

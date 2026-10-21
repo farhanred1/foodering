@@ -67,11 +67,15 @@ export default {
             body: xmlPayload,
           });
           const xmlText = await xmlRes.text();
+          const bodyMatch = xmlText.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+          const cleanBody = bodyMatch
+            ? bodyMatch[1].replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+            : xmlText.slice(0, 500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
           results.xmlRpc = {
             status: xmlRes.status,
             length: xmlText.length,
             isFault: xmlText.includes('<fault>'),
-            snippet: xmlText.slice(0, 200).replace(/\s+/g, ' ').trim(),
+            reason: cleanBody.slice(0, 400),
           };
         } catch (e) {
           results.xmlRpc = { error: e.message };
@@ -160,7 +164,7 @@ export default {
         let firstName = cleanUser;
         let lastName = '';
         let email = `${cleanUser.toLowerCase()}@shimano.com.sg`;
-        let walletBalance = 100.0;
+        let walletBalance = 0.0;
         const orders = [];
         const transactions = [];
 

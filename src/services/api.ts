@@ -17,8 +17,7 @@ export function getAuthWorkerUrls(): string[] {
     return [custom.trim()];
   }
   return [
-    'https://ssip-cafeteria-auth.farhanreduan911.workers.dev',
-    'https://black-silence-86cb.farhanreduan911.workers.dev'
+    'https://ssip-cafeteria-auth.onrender.com',  // Render.com Singapore — not blocked by Wordfence
   ];
 }
 
@@ -339,11 +338,13 @@ export const CafeteriaAPI = {
           throw new Error('Invalid authentication response from cafeteria server.');
         }
 
-        const realWallet = session.walletBalance !== undefined && session.walletBalance !== null ? session.walletBalance : 0;
+        // walletBalance may be null when the proxy cannot fetch it (balance API needs machine token)
+        // Store null explicitly so the UI can display "Balance unavailable" instead of a fake number
+        const realWallet = session.walletBalance ?? null;
 
         // Store authentic verified credentials strictly in sessionStorage for this session only
         sessionStorage.setItem('ssip_user_session', JSON.stringify(session));
-        sessionStorage.setItem('ssip_session_wallet', realWallet.toString());
+        sessionStorage.setItem('ssip_session_wallet', realWallet !== null ? realWallet.toString() : 'null');
         sessionStorage.setItem('ssip_session_orders', JSON.stringify(session.orders || []));
         sessionStorage.setItem('ssip_session_txs', JSON.stringify(session.walletTransactions || []));
         sessionStorage.removeItem('ssip_logged_out');
@@ -406,24 +407,28 @@ export const CafeteriaAPI = {
   },
 
   /**
-   * Return current wallet balance for the active session
-   * Default starting monthly cycle allowance for any employee is $100.00
+   * Return current wallet balance for the active session.
+   * Returns null if the balance could not be fetched from the server
+   * (wallet API requires a machine token not available to us).
    */
-  getWalletBalance(): number {
+  getWalletBalance(): number | null {
     const session = this.getStoredSession();
     if (!session) {
-      return 0;
+      return null;
     }
 
     try {
       const saved = sessionStorage.getItem('ssip_session_wallet');
+      if (saved === 'null') return null;   // explicitly unknown
       if (saved !== null) {
         const val = parseFloat(saved);
         if (!isNaN(val)) return val;
       }
     } catch {}
 
-    return session.walletBalance !== undefined && session.walletBalance !== null ? session.walletBalance : 0.0;
+    // Fall back to session object value
+    if (session.walletBalance === null || session.walletBalance === undefined) return null;
+    return session.walletBalance;
   },
 
   /**
@@ -450,7 +455,7 @@ export const CafeteriaAPI = {
    * Deduct amount from wallet balance upon cafeteria order for the active session
    */
   deductWallet(amount: number, details?: string): number {
-    const current = this.getWalletBalance();
+    const current = this.getWalletBalance() ?? 0;   // treat null as 0 for deduction
     const updated = Math.max(0, parseFloat((current - amount).toFixed(2)));
 
     // Save strictly to session-scoped storage

@@ -74,7 +74,7 @@ export async function handleCafeteriaAuth(username, password) {
     let firstName = upperUser;
     let lastName = '';
     let email = `${cleanUser.toLowerCase()}@shimano.com.sg`;
-    let walletBalance = 100.0;
+    let walletBalance = 0.0;
     const orders = [];
     const transactions = [];
 

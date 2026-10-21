@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ssip-cafeteria-auth
+    env: node
+    region: singapore
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node index.js
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
