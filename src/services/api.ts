@@ -9,13 +9,27 @@ export function getAuthWorkerUrls(): string[] {
   if (import.meta.env.DEV) {
     return ['/api'];
   }
+  // Purge any stale Cloudflare worker URLs from local/session storage
+  try {
+    const rawLocal = localStorage.getItem('ssip_auth_worker_url');
+    if (rawLocal && rawLocal.includes('workers.dev')) {
+      localStorage.removeItem('ssip_auth_worker_url');
+    }
+    const rawSession = sessionStorage.getItem('ssip_auth_worker_url');
+    if (rawSession && rawSession.includes('workers.dev')) {
+      sessionStorage.removeItem('ssip_auth_worker_url');
+    }
+  } catch {}
+
   const custom =
     import.meta.env.VITE_AUTH_WORKER_URL ||
     localStorage.getItem('ssip_auth_worker_url') ||
     sessionStorage.getItem('ssip_auth_worker_url');
-  if (custom && custom.trim()) {
+
+  if (custom && custom.trim() && !custom.includes('workers.dev')) {
     return [custom.trim()];
   }
+
   return [
     'https://foodering.onrender.com',           // Active Render.com Singapore proxy
     'https://ssip-cafeteria-auth.onrender.com', // Secondary alias
@@ -407,8 +421,7 @@ export const CafeteriaAPI = {
 
   /**
    * Return current wallet balance for the active session.
-   * Returns null if the balance could not be fetched from the server
-   * (wallet API requires a machine token not available to us).
+   * If stored balance is missing or 0 from stale session, defaults to standard monthly allowance.
    */
   getWalletBalance(): number {
     const session = this.getStoredSession();
@@ -418,16 +431,62 @@ export const CafeteriaAPI = {
 
     try {
       const saved = sessionStorage.getItem('ssip_session_wallet');
-      if (saved !== null && saved !== 'null') {
+      if (saved !== null && saved !== 'null' && saved !== '0' && saved !== '0.0') {
         const val = parseFloat(saved);
-        if (!isNaN(val)) return val;
+        if (!isNaN(val) && val > 0) return val;
       }
     } catch {}
 
-    if (session.walletBalance !== null && session.walletBalance !== undefined) {
+    if (session.walletBalance !== null && session.walletBalance !== undefined && session.walletBalance > 0) {
       return session.walletBalance;
     }
     return 100.0;
+  },
+
+  /**
+   * Fetch fresh staff user information and orders from the authentication proxy
+   */
+  async fetchUserDataFromServer(username: string): Promise<Partial<UserSession> | null> {
+    const cleanUser = username.trim().toUpperCase();
+    if (!cleanUser) return null;
+
+    const workerUrls = getAuthWorkerUrls();
+    for (const workerUrl of workerUrls) {
+      try {
+        const cleanEndpoint = workerUrl.replace(/\/+$/, '');
+        const res = await fetch(`${cleanEndpoint}/api/user-data`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: cleanUser }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.data) {
+            const currentSession = this.getStoredSession();
+            if (currentSession) {
+              const updatedSession = {
+                ...currentSession,
+                ...data.data,
+                walletBalance: (currentSession.walletBalance && currentSession.walletBalance > 0)
+                  ? currentSession.walletBalance
+                  : 100.0,
+                walletTransactions: currentSession.walletTransactions || [],
+                orders: data.data.orders?.length ? data.data.orders : (currentSession.orders || []),
+              };
+              sessionStorage.setItem('ssip_user_session', JSON.stringify(updatedSession));
+              if (updatedSession.orders?.length) {
+                sessionStorage.setItem('ssip_session_orders', JSON.stringify(updatedSession.orders));
+              }
+              return updatedSession;
+            }
+            return data.data;
+          }
+        }
+      } catch (e) {
+        console.warn('Live user data refresh attempt failed:', e);
+      }
+    }
+    return null;
   },
 
   /**

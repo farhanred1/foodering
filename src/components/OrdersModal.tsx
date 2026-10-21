@@ -104,9 +104,9 @@ export const OrdersModal: React.FC = () => {
     }
   }, [isOrdersOpen]);
 
-  const handleManualRefresh = () => {
+  const handleManualRefresh = async () => {
     setIsRefreshing(true);
-    refreshOrders();
+    await refreshOrders();
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
@@ -241,6 +241,33 @@ export const OrdersModal: React.FC = () => {
           {/* TAB 1: ORDERS & MEALS */}
           {activeTab === 'orders' && (
             <div className="space-y-4">
+
+              {/* Quick Account Status Banner */}
+              <div className="bg-gradient-to-r from-brand-50 via-emerald-50 to-indigo-50 border border-brand-100/80 rounded-2xl p-3 flex items-center justify-between shadow-2xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-brand-700 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                    {(user.firstName ? user.firstName[0] : (user.displayName ? user.displayName[0] : 'U')).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-extrabold text-slate-900 text-xs">{user.displayName || user.username}</span>
+                      <span className="text-[10px] text-brand-800 bg-brand-100 font-extrabold px-1.5 py-0.2 rounded-full">
+                        {user.userId ? `#${user.userId}` : user.username}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-medium">Verified Shimano Staff Account</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setActiveTab('wallet')}
+                  className="flex items-center gap-1 bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-800 px-2.5 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-2xs active:scale-95"
+                  title="View Cafeteria Wallet"
+                >
+                  <Wallet className="w-3 h-3 text-emerald-600" />
+                  <span>${walletBalance.toFixed(2)}</span>
+                </button>
+              </div>
               
               {/* Today's Food Order */}
               <div className="space-y-2">

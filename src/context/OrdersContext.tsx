@@ -30,11 +30,19 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [activeTab, setActiveTab] = useState<'orders' | 'wallet'>('orders');
 
   // Synchronize with active user login/logout
-  const refreshOrders = () => {
+  const refreshOrders = async () => {
     if (user) {
       setOrders(CafeteriaAPI.getAuthenticUserOrders());
       setWalletBalance(CafeteriaAPI.getWalletBalance());
       setWalletTransactions(CafeteriaAPI.getWalletTransactions());
+
+      try {
+        const fresh = await CafeteriaAPI.fetchUserDataFromServer(user.username);
+        if (fresh) {
+          setOrders(CafeteriaAPI.getAuthenticUserOrders());
+          setWalletBalance(CafeteriaAPI.getWalletBalance());
+        }
+      } catch {}
     } else {
       setOrders([]);
       setWalletBalance(0);

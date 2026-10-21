@@ -2,6 +2,7 @@ import React from 'react';
 import { ShoppingBag, User, LogOut, UtensilsCrossed } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useOrders } from '../context/OrdersContext';
 
 interface HeaderProps {
   // Empty props
@@ -10,6 +11,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = () => {
   const { cart, setIsCartOpen } = useCart();
   const { user, logout, setIsLoginModalOpen } = useAuth();
+  const { setIsOrdersOpen } = useOrders();
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs transition-all">
@@ -35,10 +37,11 @@ export const Header: React.FC<HeaderProps> = () => {
 
             {user ? (
               <div className="flex items-center gap-1">
-                {/* User Dropdown / Logout */}
+                {/* User Dropdown / Profile Button */}
                 <div
-                  className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200/80 pl-2 pr-1.5 py-1 sm:py-1.5 rounded-full text-xs text-slate-700 transition-colors"
-                  title={`${user.displayName || user.username} (${user.username}) • ${user.email || ''}`}
+                  onClick={() => setIsOrdersOpen(true)}
+                  className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200/90 pl-2 pr-1.5 py-1 sm:py-1.5 rounded-full text-xs text-slate-700 transition-colors cursor-pointer active:scale-95 shadow-2xs"
+                  title={`${user.displayName || user.username} (${user.username}) • Click to view Profile & Wallet`}
                 >
                   <div className="w-5 h-5 rounded-full bg-brand-700 text-white flex items-center justify-center text-[10px] font-extrabold shrink-0">
                     {(user.firstName ? user.firstName[0] : (user.displayName ? user.displayName[0] : 'U')).toUpperCase()}
@@ -47,7 +50,10 @@ export const Header: React.FC<HeaderProps> = () => {
                     {user.displayName || user.firstName || user.username}
                   </span>
                   <button
-                    onClick={logout}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      logout();
+                    }}
                     title="Log Out"
                     className="p-1 hover:bg-white rounded-full text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
                   >

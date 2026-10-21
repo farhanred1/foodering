@@ -49,9 +49,9 @@ class CookieJar {
       if (eqIdx > 0) {
         const key = parts.slice(0, eqIdx).trim();
         const val = parts.slice(eqIdx + 1).trim();
-        if (val) {
+        if (val && val !== 'deleted' && val !== '""') {
           this.cookies.set(key, val);
-        } else {
+        } else if (val === 'deleted') {
           this.cookies.delete(key);
         }
       }
@@ -107,11 +107,17 @@ function extractPrice(str) {
 // ─────────────────────────────────────────────
 
 app.get('/', (_req, res) => {
-  res.json({ status: 'ok', service: 'SSIP Cafeteria Auth Server', region: 'Singapore' });
+  res.json({
+    status: 'ok',
+    version: '2.5.0',
+    service: 'SSIP Cafeteria Auth Server',
+    region: 'Singapore',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', version: '2.5.0' });
 });
 
 app.get('/debug', async (_req, res) => {
@@ -279,15 +285,20 @@ app.post('/api/auth', async (req, res) => {
       initialHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]woocommerce-login-nonce['"]/i);
     const nonce = nonceMatch ? nonceMatch[1] : '';
 
+    const refererMatch =
+      initialHtml.match(/name=['"]_wp_http_referer['"][^>]*value=['"]([^'"]+)['"]/i) ||
+      initialHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_wp_http_referer['"]/i);
+    const wpReferer = refererMatch ? refererMatch[1] : '/';
+
     if (nonce) {
       const form = new URLSearchParams();
-      form.append('username', cleanUser);
+      form.append('username', wpProfile.username || cleanUser);
       form.append('password', password);
       form.append('woocommerce-login-nonce', nonce);
-      form.append('_wp_http_referer', '/my-account/');
+      form.append('_wp_http_referer', wpReferer);
       form.append('login', 'Log in');
 
-      // Crucial: Use redirect: 'manual' to intercept Set-Cookie headers from the 302 response!
+      // Intercept Set-Cookie headers from the 302 response
       const loginRes = await fetch(`${TARGET_HOST}/my-account/`, {
         method: 'POST',
         headers: {
@@ -295,6 +306,7 @@ app.post('/api/auth', async (req, res) => {
           'Cookie': jar.getCookieHeader(),
           'User-Agent': BROWSER_UA,
           'Referer': `${TARGET_HOST}/my-account/`,
+          'Origin': TARGET_HOST,
         },
         body: form.toString(),
         redirect: 'manual',
@@ -367,34 +379,62 @@ app.post('/api/auth', async (req, res) => {
         });
         if (walletRes.ok) {
           const walletHtml = await walletRes.text();
-          const balMatch =
-            walletHtml.match(/Current balance:?\s*<[^>]*>[\s\S]*?([\d\.]+)/i) ||
-            walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi>(?:<span[^>]*>[^<]*<\/span>)?\s*([\d\.]+)/i) ||
-            walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"><bdi><span[^>]*>[^<]*<\/span>([\d\.]+)/i) ||
-            walletHtml.match(/class="[^"]*woo-wallet-balance-amount[^"]*">[^<]*\$?([\d\.]+)/i);
+          const balDiv =
+            walletHtml.match(/class="[^"]*woo-wallet-my-wallet-balance[^"]*"[\s\S]*?<\/div>/i) ||
+            walletHtml.match(/class="[^"]*woo-wallet-balance-amount[^"]*"[\s\S]*?<\/span>/i) ||
+            walletHtml.match(/Current balance:?[\s\S]*?<\/div>/i) ||
+            walletHtml.match(/Current balance:?[\s\S]*?<\/p>/i);
 
-          if (balMatch) {
-            const val = parseFloat(balMatch[1]);
-            if (!isNaN(val)) {
-              walletBalance = val;
+          if (balDiv) {
+            const p = extractPrice(balDiv[0]);
+            if (!isNaN(p)) {
+              walletBalance = p;
               foundRealBalance = true;
             }
           }
 
-          // Parse transaction rows
-          const txRows = walletHtml.match(/<tr[^>]*class="[^"]*woo-wallet-transaction-row[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi) || [];
-          for (const row of txRows) {
-            const amountMatch = row.match(/class="[^"]*amount[^"]*"[^>]*>[\s\S]*?([\d\.]+)/i);
-            const dateMatch = row.match(/class="[^"]*date[^"]*"[^>]*>([^<]+)/i);
-            const typeMatch = row.match(/class="[^"]*type[^"]*"[^>]*>([^<]+)/i);
-            const descMatch = row.match(/class="[^"]*description[^"]*"[^>]*>([^<]+)/i);
+          if (!foundRealBalance) {
+            const amountMatch = walletHtml.match(/class="[^"]*woocommerce-Price-amount[^"]*"[\s\S]*?<\/span>/i);
             if (amountMatch) {
+              const p = extractPrice(amountMatch[0]);
+              if (!isNaN(p)) {
+                walletBalance = p;
+                foundRealBalance = true;
+              }
+            }
+          }
+
+          // Parse transaction rows from transaction table
+          const txTableMatch = walletHtml.match(/<table[^>]*class="[^"]*woo-wallet-transaction-table[^"]*"[\s\S]*?<\/table>/i);
+          const txHtml = txTableMatch ? txTableMatch[0] : walletHtml;
+          const txRows = txHtml.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+
+          for (const row of txRows) {
+            if (row.includes('<th')) continue;
+
+            const descMatch = row.match(/class="[^"]*details[^"]*"[^>]*>([\s\S]*?)<\/td>/i) ||
+                              row.match(/data-title="Details"[^>]*>([\s\S]*?)<\/td>/i);
+            const dateMatch = row.match(/class="[^"]*date[^"]*"[^>]*>([\s\S]*?)<\/td>/i) ||
+                              row.match(/data-title="Date"[^>]*>([\s\S]*?)<\/td>/i);
+            const creditMatch = row.match(/class="[^"]*credit[^"]*"[^>]*>([\s\S]*?)<\/td>/i) ||
+                                row.match(/data-title="Credit"[^>]*>([\s\S]*?)<\/td>/i);
+            const debitMatch = row.match(/class="[^"]*debit[^"]*"[^>]*>([\s\S]*?)<\/td>/i) ||
+                               row.match(/data-title="Debit"[^>]*>([\s\S]*?)<\/td>/i);
+
+            const creditAmt = creditMatch ? extractPrice(creditMatch[1]) : 0;
+            const debitAmt = debitMatch ? extractPrice(debitMatch[1]) : 0;
+            const isCredit = creditAmt > 0;
+            const amt = isCredit ? creditAmt : debitAmt;
+
+            if (amt > 0 || descMatch) {
+              const cleanDesc = descMatch ? descMatch[1].replace(/<[^>]*>/g, '').trim() : 'Cafeteria Transaction';
+              const cleanDate = dateMatch ? dateMatch[1].replace(/<[^>]*>/g, '').trim() : '';
               transactions.push({
-                id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                amount: parseFloat(amountMatch[1]) || 0,
-                date: (dateMatch ? dateMatch[1] : '').trim(),
-                type: (typeMatch ? typeMatch[1] : 'debit').trim().toLowerCase(),
-                details: (descMatch ? descMatch[1] : 'Cafeteria Transaction').trim(),
+                id: `tx-${transactions.length + 1}-${Date.now()}`,
+                amount: amt,
+                date: cleanDate,
+                type: isCredit ? 'credit' : 'debit',
+                details: cleanDesc,
               });
             }
           }
@@ -587,6 +627,141 @@ app.post('/api/auth', async (req, res) => {
       lastName,
       walletBalance,
       walletTransactions: transactions,
+      orders,
+    },
+  });
+});
+
+// ─────────────────────────────────────────────
+// POST /api/user-data — Live refresh without password
+// ─────────────────────────────────────────────
+
+app.post('/api/user-data', async (req, res) => {
+  const { username } = req.body || {};
+  const cleanUser = (username || '').trim();
+  if (!cleanUser) {
+    return res.status(400).json({ success: false, error: 'Username is required.' });
+  }
+
+  const numericId = cleanUser.replace(/^SIP/i, '');
+  const upperUser = cleanUser.toUpperCase();
+
+  let displayName = upperUser.startsWith('SIP') ? `SHIMANO EMPLOYEE #${numericId}` : upperUser;
+  let firstName = '';
+  let lastName = '';
+  let email = `${cleanUser.toLowerCase()}@shimano.com.sg`;
+  let company = 'Shimano (Singapore) Pte Ltd';
+  let userId = numericId;
+  const orders = [];
+
+  // Query staff directory
+  try {
+    const dirRes = await fetch(`${TARGET_HOST}/wp-json/wp/v2/asset_management/get-user-list`, {
+      headers: { 'User-Agent': BROWSER_UA },
+    });
+    if (dirRes.ok) {
+      const dirData = await dirRes.json();
+      if (Array.isArray(dirData?.users)) {
+        const matched =
+          dirData.users.find(u => String(u.id) === cleanUser || String(u.id) === numericId) ||
+          dirData.users.find(u => u.display_name.toUpperCase().includes(upperUser));
+        if (matched) {
+          if (matched.display_name) {
+            displayName = matched.display_name;
+            const parts = displayName.split(' ');
+            firstName = parts[0] || displayName;
+            lastName = parts.slice(1).join(' ') || '';
+          }
+          if (matched.id) userId = String(matched.id);
+        }
+      }
+    }
+  } catch {}
+
+  // Query KPOM
+  const candidateIds = Array.from(new Set([cleanUser, numericId, userId].filter(Boolean)));
+  for (const cid of candidateIds) {
+    try {
+      const kpomRes = await fetch(`${TARGET_HOST}/wp-json/wp/v2/kpom/get-user-order-items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': BROWSER_UA },
+        body: JSON.stringify({ username: cid }),
+      });
+      if (kpomRes.ok) {
+        const kpomData = await kpomRes.json();
+        const items = kpomData?.mealplan_order_items_data?.order_items;
+        if (Array.isArray(items) && items.length > 0) {
+          for (const item of items) {
+            const ordId = item.order_id || `kpom-${item.order_number || Date.now()}`;
+            if (!orders.some(o => String(o.id) === String(ordId))) {
+              orders.push({
+                id: ordId,
+                orderNumber: String(item.order_number || ordId),
+                datePlaced: item.order_date || item.delivery_date || '',
+                deliveryDate: item.delivery_date || '',
+                status: item.status || 'Completed',
+                total: parseFloat(item.price || item.total || '0') || 0,
+                customerNote: item.note || '',
+                mealDate: item.delivery_date || '',
+                paymentMethod: 'Cafeteria Allowance',
+                items: [{
+                  id: item.product_id || 1,
+                  name: item.product_name || item.item_name || 'Meal Order',
+                  price: parseFloat(item.price || '0') || 0,
+                  quantity: item.quantity || 1,
+                  mealDate: item.delivery_date || '',
+                }],
+              });
+            }
+          }
+          break;
+        }
+      }
+    } catch {}
+  }
+
+  // Query Konbini Calendar
+  for (const cid of candidateIds) {
+    try {
+      const calRes = await fetch(`${TARGET_HOST}/wp-json/wp/v2/konbini-order-calendar/get-user-orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': BROWSER_UA },
+        body: JSON.stringify({ username: cid }),
+      });
+      if (calRes.ok) {
+        const calData = await calRes.json();
+        if (Array.isArray(calData?.data) && calData.data.length > 0) {
+          for (const ord of calData.data) {
+            const ordId = ord.order_id || ord.id;
+            if (ordId && !orders.some(o => String(o.id) === String(ordId))) {
+              orders.push({
+                id: ordId,
+                orderNumber: String(ord.order_number || ordId),
+                datePlaced: ord.date || '',
+                deliveryDate: ord.date || '',
+                status: 'Completed',
+                total: parseFloat(ord.total || '0') || 0,
+                items: [],
+                paymentMethod: 'Cafeteria Allowance',
+              });
+            }
+          }
+          break;
+        }
+      }
+    } catch {}
+  }
+
+  return res.json({
+    success: true,
+    data: {
+      username: cleanUser,
+      userId,
+      displayName,
+      firstName,
+      lastName,
+      email,
+      company,
       orders,
     },
   });
