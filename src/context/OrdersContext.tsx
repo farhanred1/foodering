@@ -12,7 +12,7 @@ interface OrdersContextType {
   setIsOrdersOpen: (open: boolean) => void;
   activeTab: 'orders' | 'wallet';
   setActiveTab: (tab: 'orders' | 'wallet') => void;
-  walletBalance: number | null;
+  walletBalance: number;
   walletTransactions: WalletTransaction[];
   deductWallet: (amount: number, details?: string) => void;
   openWithTab: (tab: 'orders' | 'wallet') => void;
@@ -23,7 +23,7 @@ const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
 export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [orders, setOrders] = useState<UserOrder[]>(() => CafeteriaAPI.getAuthenticUserOrders());
-  const [walletBalance, setWalletBalance] = useState<number | null>(() => CafeteriaAPI.getWalletBalance());
+  const [walletBalance, setWalletBalance] = useState<number>(() => CafeteriaAPI.getWalletBalance());
   const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>(() => CafeteriaAPI.getWalletTransactions());
   
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
@@ -37,7 +37,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setWalletTransactions(CafeteriaAPI.getWalletTransactions());
     } else {
       setOrders([]);
-      setWalletBalance(null);
+      setWalletBalance(0);
       setWalletTransactions([]);
       setIsOrdersOpen(false);
     }

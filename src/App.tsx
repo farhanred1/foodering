@@ -123,7 +123,7 @@ export const App: React.FC = () => {
               >
                 <Wallet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <span>Wallet:</span>
-                <span className="font-extrabold">{walletBalance !== null ? `$${walletBalance.toFixed(2)}` : 'Active'}</span>
+                <span className="font-extrabold">${walletBalance.toFixed(2)}</span>
               </button>
             )}
 

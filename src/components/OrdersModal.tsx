@@ -196,13 +196,8 @@ export const OrdersModal: React.FC = () => {
                 Current Wallet Balance
               </span>
               <div className="text-4xl sm:text-5xl font-black tracking-tight">
-                {walletBalance !== null ? `$${walletBalance.toFixed(2)}` : 'Terminal Linked'}
+                ${walletBalance.toFixed(2)}
               </div>
-              {walletBalance === null && (
-                <div className="text-[10px] text-emerald-200/90 mt-1 font-medium">
-                  Allowance linked to canteen terminal
-                </div>
-              )}
             </div>
 
             <div className="mt-4 pt-4 border-t border-white/15 flex items-center justify-between text-xs text-emerald-100">

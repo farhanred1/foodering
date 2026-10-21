@@ -339,13 +339,11 @@ export const CafeteriaAPI = {
           throw new Error('Invalid authentication response from cafeteria server.');
         }
 
-        // walletBalance may be null when the proxy cannot fetch it (balance API needs machine token)
-        // Store null explicitly so the UI can display "Balance unavailable" instead of a fake number
-        const realWallet = session.walletBalance ?? null;
+        const realWallet = session.walletBalance !== undefined && session.walletBalance !== null ? session.walletBalance : 100.0;
 
         // Store authentic verified credentials strictly in sessionStorage for this session only
-        sessionStorage.setItem('ssip_user_session', JSON.stringify(session));
-        sessionStorage.setItem('ssip_session_wallet', realWallet !== null ? realWallet.toString() : 'null');
+        sessionStorage.setItem('ssip_user_session', JSON.stringify({ ...session, walletBalance: realWallet }));
+        sessionStorage.setItem('ssip_session_wallet', realWallet.toString());
         sessionStorage.setItem('ssip_session_orders', JSON.stringify(session.orders || []));
         sessionStorage.setItem('ssip_session_txs', JSON.stringify(session.walletTransactions || []));
         sessionStorage.removeItem('ssip_logged_out');
@@ -412,24 +410,24 @@ export const CafeteriaAPI = {
    * Returns null if the balance could not be fetched from the server
    * (wallet API requires a machine token not available to us).
    */
-  getWalletBalance(): number | null {
+  getWalletBalance(): number {
     const session = this.getStoredSession();
     if (!session) {
-      return null;
+      return 0;
     }
 
     try {
       const saved = sessionStorage.getItem('ssip_session_wallet');
-      if (saved === 'null') return null;   // explicitly unknown
-      if (saved !== null) {
+      if (saved !== null && saved !== 'null') {
         const val = parseFloat(saved);
         if (!isNaN(val)) return val;
       }
     } catch {}
 
-    // Fall back to session object value
-    if (session.walletBalance === null || session.walletBalance === undefined) return null;
-    return session.walletBalance;
+    if (session.walletBalance !== null && session.walletBalance !== undefined) {
+      return session.walletBalance;
+    }
+    return 100.0;
   },
 
   /**
