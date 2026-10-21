@@ -17,7 +17,8 @@ export function getAuthWorkerUrls(): string[] {
     return [custom.trim()];
   }
   return [
-    'https://ssip-cafeteria-auth.onrender.com',  // Render.com Singapore — not blocked by Wordfence
+    'https://foodering.onrender.com',           // Active Render.com Singapore proxy
+    'https://ssip-cafeteria-auth.onrender.com', // Secondary alias
   ];
 }
 
